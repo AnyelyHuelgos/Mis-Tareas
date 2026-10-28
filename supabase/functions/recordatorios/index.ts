@@ -94,7 +94,7 @@ async function enviar(userId: string, titulo: string, cuerpo: string, tag: strin
   let enviadas = 0;
   for (const s of subs ?? []) {
     try {
-      await webpush.sendNotification(s.suscripcion, JSON.stringify({ titulo, cuerpo, tag }));
+      await webpush.sendNotification(s.suscripcion, JSON.stringify({ titulo, cuerpo, tag }), { TTL: 86400, urgency: "high" });
       enviadas++;
     } catch (e) {
       // 404/410 = ese celular ya no existe o quitó el permiso: lo borramos
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
     let enviadas = 0;
     for (const u of usuarios) {
       enviadas += await enviar(u, "Notificación de prueba",
-        "¡Funciona! Así te llegarán tus recordatorios.", "prueba");
+        "¡Funciona! Así te llegarán tus recordatorios.", "prueba-" + Date.now());
     }
     return Response.json({ ok: true, prueba: true, enviadas });
   }
