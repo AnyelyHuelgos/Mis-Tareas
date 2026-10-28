@@ -98,6 +98,26 @@
         </label>
       </div>
 
+      <fieldset class="repetir">
+        <legend>Repetir como rutina</legend>
+        <div class="dias" id="tDias">
+          <label><input type="checkbox" value="1"><span>L</span></label>
+          <label><input type="checkbox" value="2"><span>M</span></label>
+          <label><input type="checkbox" value="3"><span>Mi</span></label>
+          <label><input type="checkbox" value="4"><span>J</span></label>
+          <label><input type="checkbox" value="5"><span>V</span></label>
+          <label><input type="checkbox" value="6"><span>S</span></label>
+          <label><input type="checkbox" value="0"><span>D</span></label>
+        </div>
+        <div class="atajos-dias">
+          <button type="button" data-dias="1,2,3,4,5,6">Lunes a sábado</button>
+          <button type="button" data-dias="1,2,3,4,5">Lunes a viernes</button>
+          <button type="button" data-dias="0,1,2,3,4,5,6">Todos los días</button>
+          <button type="button" data-dias="">No repetir</button>
+        </div>
+        <p class="ayuda-campo">Si eliges días, la tarea aparece esos días en Hoy y te aviso a la hora que pongas arriba.</p>
+      </fieldset>
+
       <div class="dos-columnas">
         <label>Prioridad
           <select id="tPrioridad">
@@ -129,9 +149,9 @@
       </label>
 
       <fieldset class="subtareas-editor">
-        <legend>Subtareas</legend>
+        <legend>Pasos (subtareas)</legend>
         <ol id="listaSubEditor"></ol>
-        <button type="button" class="btn suave" id="btnAgregarSub">+ Agregar subtarea</button>
+        <button type="button" class="btn suave" id="btnAgregarSub">+ Agregar paso</button>
       </fieldset>
 
       <label>Notas
@@ -167,6 +187,16 @@
     </form>
   </dialog>
 
+  <!-- ============ DIÁLOGO: INSTALAR ============ -->
+  <dialog id="dlgInstalar">
+    <h2>Instalar en tu celular</h2>
+    <div id="instruccionesInstalar"></div>
+    <div class="acciones">
+      <span class="espacio"></span>
+      <button type="button" class="btn primario" data-cerrar>Entendido</button>
+    </div>
+  </dialog>
+
   <!-- ============ DIÁLOGO: CATEGORÍA ============ -->
   <dialog id="dlgCategoria">
     <form id="formCategoria">
@@ -195,14 +225,14 @@
       <button type="button" class="btn rosa" id="btnListoVoz">Listo</button>
     </div>
     <button type="button" class="enlace" id="btnEscribirEnVez">Prefiero escribirlo</button>
-    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, subtareas: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"</p>
+    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"</p>
   </div>
 
   <!-- ============ DIÁLOGO: ESCRIBIR COMO SI HABLARAS ============ -->
   <dialog id="dlgEscribir">
     <form id="formEscribir">
       <h2>Escribe tu tarea o idea</h2>
-      <p class="ayuda">Escríbela como la dirías en voz alta. Ej: "categoría Universidad, tarea parcial de cálculo, subtareas repasar y hacer taller, para el viernes" o "idea en Planecitos que diga armar 50 cuentos"</p>
+      <p class="ayuda">Escríbela como la dirías en voz alta. Ej: "categoría Universidad, tarea parcial de cálculo, pasos repasar y hacer taller, para el viernes" o "idea en Planecitos que diga armar 50 cuentos"</p>
       <label>Tu tarea
         <textarea id="eTexto" rows="4" required></textarea>
       </label>

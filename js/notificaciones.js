@@ -55,7 +55,7 @@ async function resumenLocal(tareas) {
   const hoy = hoyISO();
   if (localStorage.getItem('ultimoResumen') === hoy) return;
 
-  const pendientes = tareas.filter((t) => !t.hecha && t.fecha_limite);
+  const pendientes = tareas.filter((t) => !t.hecha && t.fecha_limite && !(t.repetir_dias || []).length);
   const deHoy = pendientes.filter((t) => t.fecha_limite <= hoy);
   const proximas = pendientes.filter((t) => {
     const faltan = diasEntre(hoy, t.fecha_limite);
@@ -63,10 +63,13 @@ async function resumenLocal(tareas) {
   });
   const insistir = pendientes.concat(tareas.filter((t) => !t.hecha && !t.fecha_limite))
     .filter((t) => t.fecha_limite !== hoy && !(t.fecha_limite < hoy) && tocaInsistir(t, hoy));
-  if (!deHoy.length && !proximas.length && !insistir.length) return;
+  const diaHoy = new Date().getDay();
+  const rutinas = tareas.filter((t) => Array.isArray(t.repetir_dias) && t.repetir_dias.includes(diaHoy) && t.ultima_completada !== hoy);
+  if (!deHoy.length && !proximas.length && !insistir.length && !rutinas.length) return;
 
   const partes = [];
   if (deHoy.length) partes.push(`Hoy: ${deHoy.map((t) => t.titulo).slice(0, 3).join(', ')}${deHoy.length > 3 ? ` y ${deHoy.length - 3} más` : ''}`);
+  if (rutinas.length) partes.push(`Rutinas: ${rutinas.map((t) => t.titulo).join(', ')}`);
   if (insistir.length) partes.push(`No te olvides: ${insistir.map((t) => t.fecha_limite ? `${t.titulo} (${cuentaRegresiva(t.fecha_limite).toLowerCase()})` : t.titulo).join(', ')}`);
   if (proximas.length) partes.push(`Se acerca: ${proximas.map((t) => `${t.titulo} (${etiquetaFecha(t.fecha_limite).toLowerCase()})`).join(', ')}`);
 

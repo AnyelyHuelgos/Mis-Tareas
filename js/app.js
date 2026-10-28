@@ -44,6 +44,20 @@ function categoriaPorId(id) { return estado.categorias.find((c) => c.id === id);
 function colorDe(idCat) { return categoriaPorId(idCat)?.color || '#8A93AB'; }
 function subtareasDe(idTarea) { return estado.subtareas.filter((s) => s.tarea_id === idTarea); }
 
+// Rutina = tarea que se repite ciertos días (ej. inglés de lunes a sábado)
+function esRutina(t) { return Array.isArray(t.repetir_dias) && t.repetir_dias.length > 0; }
+function rutinaToca(t, fechaISO) { return esRutina(t) && t.repetir_dias.includes(desdeISO(fechaISO).getDay()); }
+function sinRutinas(lista) { return lista.filter((t) => !esRutina(t)); }
+
+const NOMBRES_DIAS = ['D', 'L', 'M', 'Mi', 'J', 'V', 'S'];
+function textoDias(dias) {
+  const orden = [...dias].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).join(',');
+  if (orden === '1,2,3,4,5,6,0') return 'Todos los días';
+  if (orden === '1,2,3,4,5,6') return 'Lunes a sábado';
+  if (orden === '1,2,3,4,5') return 'Lunes a viernes';
+  return orden.split(',').map((d) => NOMBRES_DIAS[d]).join(', ');
+}
+
 function tareasFiltradas() {
   return estado.filtroCategoria
     ? estado.tareas.filter((t) => t.categoria_id === estado.filtroCategoria)
@@ -96,6 +110,9 @@ async function iniciarApp() {
 
 async function recargar() {
   const datos = await DB.cargarTodo();
+  // En las rutinas, "hecha" significa "hecha HOY"
+  const hoy = hoyISO();
+  datos.tareas.forEach((t) => { if (esRutina(t)) t.hecha = t.ultima_completada === hoy; });
   Object.assign(estado, datos);
   render();
 }
@@ -147,8 +164,8 @@ function renderChips() {
   const activa = estado.vista === 'categoria' ? estado.categoriaAbierta : estado.filtroCategoria;
   const chips = [`<button class="chip ${!activa ? 'activo' : ''}" data-accion="filtrar" data-id="">Todas</button>`];
   estado.categorias.forEach((c) => {
-    chips.push(`<button class="chip ${activa === c.id ? 'activo' : ''}" data-accion="filtrar" data-id="${c.id}">
-      <span class="punto" style="background:${c.color}"></span>${esc(c.nombre)}</button>`);
+    chips.push(`<button class="chip ${activa === c.id ? 'activo' : ''}" style="--c:${c.color}" data-accion="filtrar" data-id="${c.id}">
+      <span class="nombre">${esc(c.nombre)}</span></button>`);
   });
   chips.push('<button class="chip nuevo" data-accion="nueva-categoria">+ Categoría</button>');
   $('#chipsCategorias').innerHTML = chips.join('');
@@ -165,10 +182,11 @@ function htmlTarea(t) {
   const meta = [];
   if (cat && !estado.filtroCategoria) meta.push(`<span class="etiqueta-cat">${esc(cat.nombre)}</span>`);
   if (t.fecha_limite) meta.push(`<span class="${vencida ? 'vencida' : ''}">${etiquetaFecha(t.fecha_limite)}${!t.hecha ? ` (${cuentaRegresiva(t.fecha_limite).toLowerCase()})` : ''}</span>`);
+  if (esRutina(t)) meta.push(`<span>↻ ${textoDias(t.repetir_dias)}${t.hora ? ` a las ${horaBonita(t.hora)}` : ''}</span>`);
+  else if (t.hora) meta.push(`<span>${horaBonita(t.hora)}</span>`);
   if (t.recordar_cada && !t.hecha) meta.push(`<span>↻ ${t.recordar_cada === 1 ? 'Te recuerdo a diario' : `Te recuerdo cada ${t.recordar_cada} días`}</span>`);
-  if (t.hora) meta.push(`<span>${horaBonita(t.hora)}</span>`);
   if (t.prioridad === 'alta' && !t.hecha) meta.push('<span class="prioridad-alta">Prioridad alta</span>');
-  if (subs.length) meta.push(`<span>${hechas} de ${subs.length} subtareas</span>`);
+  if (subs.length) meta.push(`<span>${hechas} de ${subs.length} pasos</span>`);
 
   const listaSubs = subs.length ? `
     <ul class="subtareas">
@@ -216,14 +234,16 @@ function htmlProgreso(lista, etiqueta) {
 function vistaHoy() {
   const hoy = hoyISO();
   const lista = tareasFiltradas();
-  const deHoy = lista.filter((t) => t.fecha_limite === hoy);
-  const vencidas = lista.filter((t) => !t.hecha && t.fecha_limite && t.fecha_limite < hoy);
+  const deHoy = sinRutinas(lista).filter((t) => t.fecha_limite === hoy);
+  const vencidas = sinRutinas(lista).filter((t) => !t.hecha && t.fecha_limite && t.fecha_limite < hoy);
   const yaListadas = new Set([...deHoy, ...vencidas].map((t) => t.id));
   const recordatorios = lista.filter((t) => !yaListadas.has(t.id) && tocaInsistir(t, hoy));
+  const rutinas = lista.filter((t) => rutinaToca(t, hoy));
 
-  let html = htmlProgreso(deHoy, 'hechas hoy');
+  let html = htmlProgreso([...deHoy, ...rutinas], 'hechas hoy');
+  if (rutinas.length) html += `<h2 class="titulo-seccion">Rutinas de hoy <small>${rutinas.filter((t) => t.hecha).length} de ${rutinas.length}</small></h2>${htmlLista(rutinas)}`;
   html += `<h2 class="titulo-seccion">Para hoy <small>${deHoy.length}</small></h2>`;
-  html += deHoy.length ? htmlLista(deHoy) : htmlVacio('No tienes nada para hoy.');
+  html += deHoy.length ? htmlLista(deHoy) : htmlVacio(rutinas.length ? 'Fuera de tus rutinas, no tienes nada más para hoy.' : 'No tienes nada para hoy.');
   if (vencidas.length) html += `<h2 class="titulo-seccion">Atrasadas <small>${vencidas.length}</small></h2>${htmlLista(vencidas)}`;
   if (recordatorios.length) html += `<h2 class="titulo-seccion">No te olvides <small>${recordatorios.length}</small></h2>${htmlLista(recordatorios)}`;
   return html;
@@ -240,7 +260,9 @@ function vistaSemana() {
     const dia = sumarDias(hoy, i);
     const delDia = lista.filter((t) => t.fecha_limite === dia);
     const pendientes = delDia.filter((t) => !t.hecha).length;
+    const rutinasDia = lista.filter((t) => rutinaToca(t, dia));
     html += `<h2 class="titulo-seccion">${etiquetaFecha(dia)} <small>${delDia.length ? `${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : 'Libre'}</small></h2>`;
+    if (rutinasDia.length) html += `<p class="rutinas-dia">Rutinas: ${rutinasDia.map((t) => esc(t.titulo)).join(', ')}</p>`;
     html += htmlLista(delDia);
   }
   return html;
@@ -268,7 +290,7 @@ function vistaCategorias() {
 
   const hoy = hoyISO();
   estado.categorias.forEach((c) => {
-    const delaCat = estado.tareas.filter((t) => t.categoria_id === c.id);
+    const delaCat = sinRutinas(estado.tareas).filter((t) => t.categoria_id === c.id);
     const pendientes = delaCat.filter((t) => !t.hecha);
     const hechas = delaCat.length - pendientes.length;
     const ideas = estado.ideas.filter((i) => i.categoria_id === c.id && !i.convertida).length;
@@ -306,7 +328,8 @@ function vistaCategoria() {
   const c = categoriaPorId(estado.categoriaAbierta);
   if (!c) { estado.vista = 'categorias'; return vistaCategorias(); }
 
-  const delaCat = estado.tareas.filter((t) => t.categoria_id === c.id);
+  const rutinasCat = estado.tareas.filter((t) => t.categoria_id === c.id && esRutina(t));
+  const delaCat = sinRutinas(estado.tareas).filter((t) => t.categoria_id === c.id);
   const pendientes = delaCat.filter((t) => !t.hecha);
   const conFecha = pendientes.filter((t) => t.fecha_limite);
   const sinFecha = pendientes.filter((t) => !t.fecha_limite);
@@ -333,6 +356,8 @@ function vistaCategoria() {
       <button class="btn rosa" type="submit">Guardar</button>
     </form>
     <div class="ideas">${ideas.length ? ideas.map(htmlIdea).join('') : '<p class="vacio">Aquí van tus ideas sueltas. También puedes dictarlas con el micrófono.</p>'}</div>
+
+    ${rutinasCat.length ? `<h2 class="titulo-seccion">Rutinas <small>${rutinasCat.length}</small></h2>${htmlLista(rutinasCat)}` : ''}
 
     <h2 class="titulo-seccion">Próximas entregas <small>${conFecha.length}</small></h2>
     ${conFecha.length ? htmlLista(conFecha) : '<p class="vacio">Sin entregas con fecha.</p>'}
@@ -438,6 +463,7 @@ document.addEventListener('submit', async (e) => {
 // ---------- Marcar como hecha ----------
 async function marcarTarea(id, hecha) {
   const t = estado.tareas.find((x) => x.id === id);
+  if (esRutina(t)) return marcarRutina(t, hecha);
   const subs = subtareasDe(id);
   const antes = { tarea: t.hecha, subs: subs.map((s) => s.hecha) };
 
@@ -458,6 +484,23 @@ async function marcarTarea(id, hecha) {
   }
 }
 
+// Las rutinas se marcan "hechas hoy": mañana vuelven a salir pendientes
+async function marcarRutina(t, hecha) {
+  const antes = { hecha: t.hecha, fecha: t.ultima_completada };
+  t.hecha = hecha;
+  t.ultima_completada = hecha ? hoyISO() : null;
+  render();
+  if (hecha) toast('¡Rutina de hoy cumplida!');
+  try {
+    await DB.editarTarea(t.id, { ultima_completada: t.ultima_completada });
+  } catch (err) {
+    t.hecha = antes.hecha;
+    t.ultima_completada = antes.fecha;
+    render();
+    toast('No se pudo guardar. Revisa tu conexión.');
+  }
+}
+
 async function marcarSubtarea(id, hecha) {
   const s = estado.subtareas.find((x) => x.id === id);
   const t = estado.tareas.find((x) => x.id === s.tarea_id);
@@ -472,7 +515,10 @@ async function marcarSubtarea(id, hecha) {
 
   try {
     await DB.editarSubtarea(id, { hecha });
-    if (t.hecha !== antes.tarea) await DB.editarTarea(t.id, { hecha: t.hecha });
+    if (t.hecha !== antes.tarea) {
+      if (esRutina(t)) await DB.editarTarea(t.id, { ultima_completada: t.hecha ? hoyISO() : null });
+      else await DB.editarTarea(t.id, { hecha: t.hecha });
+    }
   } catch (err) {
     s.hecha = antes.sub;
     t.hecha = antes.tarea;
@@ -523,6 +569,7 @@ function abrirTarea(tarea, prellenado = {}, transcripcion = '') {
   $('#tPrioridad').value = datos.prioridad || 'media';
   $('#tRecordar').value = String(datos.recordar_dias_antes ?? 2);
   $('#tRecordarCada').value = String(datos.recordar_cada ?? 0);
+  marcarDias(datos.repetir_dias || []);
   $('#tNotas').value = datos.notas || '';
 
   const lista = $('#listaSubEditor');
@@ -534,6 +581,15 @@ function abrirTarea(tarea, prellenado = {}, transcripcion = '') {
   dlgTarea.showModal();
   if (!datos.titulo) setTimeout(() => $('#tTitulo').focus(), 50);
 }
+
+function marcarDias(dias) {
+  document.querySelectorAll('#tDias input').forEach((c) => { c.checked = dias.includes(Number(c.value)); });
+}
+function diasElegidos() {
+  return [...document.querySelectorAll('#tDias input:checked')].map((c) => Number(c.value));
+}
+document.querySelectorAll('.atajos-dias button').forEach((b) =>
+  b.addEventListener('click', () => marcarDias(b.dataset.dias ? b.dataset.dias.split(',').map(Number) : [])));
 
 $('#btnAgregarSub').addEventListener('click', () => {
   const fila = filaSubtarea();
@@ -551,9 +607,15 @@ $('#formTarea').addEventListener('submit', async (e) => {
     prioridad: $('#tPrioridad').value,
     recordar_dias_antes: Number($('#tRecordar').value),
     recordar_cada: Number($('#tRecordarCada').value),
+    repetir_dias: diasElegidos(),
     notas: $('#tNotas').value.trim() || null
   };
   if (!datos.titulo) return;
+  if (datos.repetir_dias.length && !datos.hora) {
+    toast('Pon una hora para que te avise ese día.');
+    $('#tHora').focus();
+    return;
+  }
 
   // Leer las subtareas del formulario
   const filas = [...$('#listaSubEditor').querySelectorAll('input')]
@@ -756,6 +818,7 @@ async function procesarVoz(texto) {
     categoria_id: categoriaId || categoriaActual(),
     fecha_limite: r.fecha,
     hora: r.hora,
+    repetir_dias: r.repetirDias,
     subtareas: r.subtareas
   }, texto);
 }
@@ -820,17 +883,51 @@ $('#btnNotificaciones').addEventListener('click', async () => {
 });
 
 let eventoInstalar = null;
+const yaInstalada = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// Mostramos el botón siempre que no esté instalada; si el navegador no ofrece
+// la instalación directa, explicamos cómo hacerlo a mano.
+$('#btnInstalar').hidden = yaInstalada;
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   eventoInstalar = e;
-  $('#btnInstalar').hidden = false;
 });
+window.addEventListener('appinstalled', () => { $('#btnInstalar').hidden = true; });
+
 $('#btnInstalar').addEventListener('click', async () => {
-  if (!eventoInstalar) return;
-  eventoInstalar.prompt();
-  await eventoInstalar.userChoice;
-  eventoInstalar = null;
-  $('#btnInstalar').hidden = true;
+  if (eventoInstalar) {
+    eventoInstalar.prompt();
+    await eventoInstalar.userChoice;
+    eventoInstalar = null;
+    return;
+  }
+  const ua = navigator.userAgent;
+  const esIphone = /iPhone|iPad|iPod/i.test(ua);
+  const esAndroid = /Android/i.test(ua);
+  const enChrome = /Chrome/i.test(ua) && !/EdgA|OPR|SamsungBrowser|Instagram|FBAN|FBAV/i.test(ua);
+  let pasos;
+  if (esIphone) {
+    pasos = `<ol>
+      <li>Abre esta página en <b>Safari</b> (no desde Instagram, WhatsApp ni otro navegador).</li>
+      <li>Toca el botón <b>Compartir</b> (el cuadrito con la flecha hacia arriba).</li>
+      <li>Baja y toca <b>Agregar a pantalla de inicio</b>.</li>
+      <li>Toca <b>Agregar</b>. Abre la app desde el ícono nuevo.</li></ol>`;
+  } else if (esAndroid && !enChrome) {
+    pasos = `<ol>
+      <li>Copia el enlace de esta página.</li>
+      <li>Ábrelo en <b>Google Chrome</b>. Si lo abriste desde WhatsApp o Instagram, toca los tres puntos y elige "Abrir en Chrome".</li>
+      <li>Toca el menú <b>⋮</b> y elige <b>Instalar aplicación</b> o <b>Agregar a la pantalla principal</b>.</li></ol>`;
+  } else if (esAndroid) {
+    pasos = `<ol>
+      <li>Toca el menú <b>⋮</b> arriba a la derecha de Chrome.</li>
+      <li>Elige <b>Instalar aplicación</b> o <b>Agregar a la pantalla principal</b>.</li>
+      <li>Confirma. Abre la app desde el ícono nuevo.</li></ol>
+      <p>Si no ves la opción, recarga la página una vez y vuelve a intentar.</p>`;
+  } else {
+    pasos = `<p>En el computador, busca el ícono de instalar en la barra de direcciones del navegador, o abre el menú y elige <b>Instalar Mis Tareas</b>.</p>`;
+  }
+  $('#instruccionesInstalar').innerHTML = pasos;
+  $('#dlgInstalar').showModal();
 });
 
 // Si vuelves a la app otro día sin cerrarla, se actualiza la fecha

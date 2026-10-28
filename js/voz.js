@@ -159,7 +159,16 @@ function interpretarComando(textoOriginal, categorias) {
   const t = { original: ' ' + textoOriginal.normalize('NFC') + ' ', bajo: '' };
   t.bajo = sinTildes(t.original);
 
-  const resultado = { titulo: '', categoriaId: null, categoriaNueva: null, subtareas: [], fecha: null, hora: null };
+  const resultado = { titulo: '', categoriaId: null, categoriaNueva: null, subtareas: [], fecha: null, hora: null, repetirDias: [] };
+
+  // 0) RUTINA: "todos los días", "de lunes a sábado", "entre semana"
+  const reRepetir = /\b(?:(?:todos los dias|a diario|cada dia)(?:\s+de\s+lunes\s+a\s+(viernes|sabado|domingo))?|de lunes a (viernes|sabado|domingo)|entre semana)\b/;
+  const mr = t.bajo.match(reRepetir);
+  if (mr) {
+    const hasta = mr[1] || mr[2] || (mr[0].includes('entre semana') ? 'viernes' : 'domingo');
+    resultado.repetirDias = { viernes: [1, 2, 3, 4, 5], sabado: [1, 2, 3, 4, 5, 6], domingo: [0, 1, 2, 3, 4, 5, 6] }[hasta];
+    borrarTramo(t, mr.index, mr.index + mr[0].length);
+  }
 
   // 1) FECHA: "para mañana", "para el viernes", "fecha 15 de noviembre"
   const reFecha = new RegExp(
@@ -186,7 +195,8 @@ function interpretarComando(textoOriginal, categorias) {
   if (mo) borrarTramo(t, mo.index, mo.index + mo[0].length);
 
   // 4) Partir el texto por palabras clave
-  const reClaves = /\b(?:en la )?(categoria|tarea|titulo|subtareas|subtarea|pasos)\b/g;
+  // "pasos" es la palabra recomendada; "subtareas" también sirve, aunque la voz la entiende peor
+  const reClaves = /\b(?:en la )?(sub tareas|sus tareas|subtareas|subtarea|pasos|categoria|tarea|titulo)\b/g;
   const marcas = [...t.bajo.matchAll(reClaves)];
   const tramos = { inicio: '', categoria: '', titulo: '', subtareas: '' };
 

@@ -111,25 +111,30 @@ textarea { resize: vertical; }
   background: var(--cabecera-fondo); color: var(--cabecera-texto);
   padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px 16px;
   border-radius: 0 0 30px 30px;
-  position: sticky; top: 0; z-index: 5;
 }
 .cabecera-fila { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; max-width: 720px; margin: 0 auto; }
 .cabecera-botones { display: flex; gap: 8px; }
 .saludo { margin: 0; opacity: .7; font-weight: 600; }
-.cabecera h1 { font-size: 1.95rem; font-weight: 700; }
+.cabecera h1 { font-size: 1.75rem; font-weight: 700; }
+@media (min-width: 600px) { .cabecera h1 { font-size: 2rem; } }
 
-.chips { display: flex; gap: 8px; overflow-x: auto; margin: 14px auto 0; padding-bottom: 2px; scrollbar-width: none; max-width: 720px; }
-.chips::-webkit-scrollbar { display: none; }
+.chips {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  margin: 14px auto 0; max-width: 720px;
+}
+@media (min-width: 600px) { .chips { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
 .chip {
   flex: 0 0 auto; border: 0; background: rgba(255, 255, 255, .55); color: var(--cabecera-texto);
-  border-radius: 999px; padding: 7px 14px; font-size: .9rem; font-weight: 600;
-  display: inline-flex; align-items: center; gap: 7px;
+  border-radius: 12px; padding: 9px 6px; font-size: .85rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; min-width: 0;
+  box-shadow: inset 0 -3px 0 var(--c, transparent);
 }
+.chip .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-color-scheme: dark) { .chip { background: rgba(255, 255, 255, .08); } }
-.chip .punto { width: 10px; height: 10px; border-radius: 50%; }
-.chip.activo { background: var(--negro); color: var(--blanco); }
+.chip .punto { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.chip.activo { background: var(--negro); color: var(--blanco); box-shadow: inset 0 -3px 0 var(--c, var(--negro)); }
 @media (prefers-color-scheme: dark) { .chip.activo { background: var(--rosa); color: var(--negro); } }
-.chip.nuevo { background: transparent; border: 1.5px dashed currentColor; opacity: .75; }
+.chip.nuevo { grid-column: 1 / -1; background: transparent; border: 1.5px dashed currentColor; opacity: .75; }
 
 /* ---------- CONTENIDO ---------- */
 main { max-width: 720px; margin: 0 auto; padding: 18px 16px calc(env(safe-area-inset-bottom, 0px) + 120px); }
@@ -237,6 +242,26 @@ main { max-width: 720px; margin: 0 auto; padding: 18px 16px calc(env(safe-area-i
 .idea-pie { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--texto-suave); }
 .mini { border: 0; background: rgba(255, 255, 255, .7); border-radius: 999px; padding: 5px 10px; font-size: .78rem; font-weight: 700; color: var(--texto); }
 @media (prefers-color-scheme: dark) { .mini { background: rgba(255, 255, 255, .1); } }
+
+/* ---------- RUTINAS ---------- */
+.repetir { border: 1.5px solid var(--linea); border-radius: 14px; padding: 10px 12px 12px; margin: 0 0 14px; }
+.repetir legend { font-weight: 700; font-size: .9rem; padding: 0 6px; }
+.dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dias label { margin: 0; }
+.dias input { position: absolute; opacity: 0; pointer-events: none; }
+.dias span {
+  display: grid; place-items: center; height: 40px; border-radius: 12px;
+  border: 1.5px solid var(--linea); font-weight: 800; cursor: pointer;
+}
+.dias input:checked + span { background: var(--lila-fuerte); border-color: var(--lila-fuerte); color: #fff; }
+.dias input:focus-visible + span { outline: 3px solid var(--lila-fuerte); outline-offset: 2px; }
+.atajos-dias { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.atajos-dias button { border: 0; background: var(--fondo); border-radius: 999px; padding: 6px 12px; font-size: .82rem; font-weight: 700; }
+.ayuda-campo { font-size: .8rem; color: var(--texto-suave); margin: 10px 0 0; }
+.rutinas-dia { font-size: .88rem; color: var(--texto-suave); margin: -4px 0 10px; }
+
+#instruccionesInstalar ol { padding-left: 20px; }
+#instruccionesInstalar li { margin-bottom: 8px; }
 
 /* ---------- CALENDARIO ---------- */
 .cal { background: var(--superficie); border-radius: var(--radio); box-shadow: var(--sombra); padding: 14px; }

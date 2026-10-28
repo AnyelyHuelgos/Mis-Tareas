@@ -28,6 +28,7 @@ mis-tareas/
     ├── 01_tablas.sql                → Crea las tablas y la seguridad
     ├── 02_recordatorio_diario.sql   → Programa el aviso de las 7 a. m. (y trae la prueba)
     ├── 03_ideas_y_recordatorios.sql → Lluvia de ideas y "recuérdame cada X días"
+    ├── 04_rutinas.sql               → Rutinas que se repiten ciertos días
     └── functions/recordatorios/     → Función que envía las notificaciones
 ```
 
@@ -36,7 +37,7 @@ mis-tareas/
 ## Paso 1. Crear la base de datos (Supabase)
 
 1. Entra a supabase.com, crea una cuenta gratis y un **proyecto nuevo**.
-2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql`.
+2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql` y `supabase/04_rutinas.sql`.
 3. Ve a **Authentication → Users → Add user → Create new user**. Pon tu correo y una contraseña. Marca **Auto Confirm User**.
 4. Ve a **Authentication → Sign In / Providers** y desactiva **Allow new users to sign up**. Así nadie más puede crear cuenta.
 
@@ -77,24 +78,33 @@ Al entrar, deja marcado **Recordarme en este celular** y no tendrás que volver 
 
 ---
 
-## Paso 6. Notificaciones con la app cerrada (opcional)
+## Paso 6. Notificaciones con la app cerrada
 
-Sin este paso, igual te llega un resumen **cuando abres la app** cada día (si activaste la 🔔).
-Con este paso, te llega **todos los días a las 7 a. m.** aunque no la abras.
+Sin este paso, solo ves el resumen **cuando abres la app**. Con este paso te llegan:
+- el resumen todos los días a las **7:00 a. m.**,
+- cada rutina **a su hora** (solo los días que elegiste),
+- cada tarea de hoy que tenga hora.
 
-**6.1 Generar las llaves VAPID** (en la terminal de VS Code):
-```bash
-npx web-push generate-vapid-keys
-```
-Te da una **Public Key** y una **Private Key**.
-- Pega la **Public Key** en `js/config.js` (`VAPID_PUBLIC_KEY`).
-- La **Private Key** NO va en el código: va en los secretos de Supabase.
+**6.1 Generar las llaves VAPID** (una sola vez)
+1. Necesitas Node.js. Revísalo en la terminal de VS Code con `node -v`. Si da error, instálalo desde nodejs.org (versión LTS) y reinicia VS Code.
+2. En la terminal escribe:
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+   Si pregunta "Ok to proceed?", escribe `y`.
+3. Te muestra una **Public Key** y una **Private Key**. Cópialas en un bloc de notas.
+4. Pega la **Public Key** en `js/config.js`, en `VAPID_PUBLIC_KEY`. Haz Commit y Sync.
+5. La **Private Key** NO va en el código: va en Supabase (paso 6.3).
 
-**6.2 Crear la Edge Function**
-1. En Supabase ve a **Edge Functions → Deploy a new function → Via Editor**.
-2. Nómbrala `recordatorios` y pega el contenido de `supabase/functions/recordatorios/index.ts`.
-3. En la configuración de la función, desactiva **Verify JWT** (la protegemos con nuestra propia clave).
-4. Ve a **Edge Functions → Secrets** y agrega:
+**6.2 Crear la función en Supabase**
+1. Supabase → **Edge Functions** → **Deploy a new function** → **Via Editor**.
+2. Nómbrala exactamente `recordatorios`.
+3. Borra el código de ejemplo y pega todo `supabase/functions/recordatorios/index.ts`.
+4. Toca **Deploy**.
+5. Entra a la función → **Details** (o Settings) y **desactiva "Verify JWT"** / "Enforce JWT verification". Guarda.
+
+**6.3 Guardar los secretos**
+Supabase → **Edge Functions** → **Secrets** (o Project Settings → Edge Functions). Agrega uno por uno:
 
 | Nombre | Valor |
 |---|---|
@@ -102,23 +112,25 @@ Te da una **Public Key** y una **Private Key**.
 | `VAPID_PRIVATE_KEY` | tu Private Key |
 | `VAPID_SUBJECT` | `mailto:tucorreo@gmail.com` |
 | `CRON_SECRET` | una clave larga que inventes, ej. `tareas-anyely-8f3k29dk` |
+| `HORA_RESUMEN` | (opcional) la hora del resumen, ej. `06:30`. Si no la pones, es `07:00` |
 
-**6.3 Programar el aviso diario**
-1. **Database → Extensions**: activa `pg_cron` y `pg_net`.
-2. Abre `supabase/02_recordatorio_diario.sql`, cambia `TU-PROYECTO` y `TU-CLAVE-SECRETA-CRON` (la misma de `CRON_SECRET`).
-3. Pégalo en el SQL Editor y dale **Run**.
+**6.4 Programar los avisos**
+1. Supabase → **Database → Extensions**: busca y activa **pg_cron** y **pg_net**.
+2. Abre `supabase/02_recordatorio_diario.sql`, cambia `TU-PROYECTO` (lo ves en tu Project URL) y `TU-CLAVE-SECRETA-CRON` (la misma de `CRON_SECRET`).
+3. Pégalo en el **SQL Editor** y dale **Run**.
 
-**6.4 Activar en el celular:** abre la app y toca 🔔. Acepta el permiso.
+**6.5 Activar en el celular**
+- **Android:** abre la app en **Chrome** (instalada o no, funciona igual) → toca 🔔 → **Permitir**.
+- **iPhone:** primero instálala desde Safari (Compartir → Agregar a pantalla de inicio), ábrela desde el ícono → toca 🔔 → **Permitir**.
 
-**6.5 Probar:** al final de `02_recordatorio_diario.sql` hay un bloque de PRUEBA. Quítale los `--`, cambia tus datos y córrelo. Te debe llegar "Notificación de prueba" al celular.
+**6.6 Probar:** al final de `02_recordatorio_diario.sql` está el bloque de PRUEBA. Quítale los `--`, cambia tus datos, selecciona solo esas líneas y dale **Run**. Te debe llegar "Notificación de prueba".
 
-> En iPhone las notificaciones solo funcionan si la app está instalada en la pantalla de inicio (iOS 16.4 o más reciente).
+**Si no llega:** en el SQL Editor corre `select * from cron.job_run_details order by start_time desc limit 5;` y en **Edge Functions → recordatorios → Logs** mira si hay errores.
 
-Cada tarea tiene dos opciones de aviso:
+Cada tarea tiene estas opciones de aviso:
+- **Repetir como rutina**: elige los días (o "Lunes a sábado") y la hora. Aparece esos días en Hoy y te avisa a esa hora.
 - **Avisarme**: una vez, X días antes de la fecha límite.
-- **Insistirme hasta que la marque como hecha**: todos los días, cada 2, cada 3 días o cada semana, hasta que la completes.
-
-El resumen de la mañana incluye lo de hoy, lo atrasado, lo que se acerca y lo que toca insistirte.
+- **Insistirme hasta que la marque como hecha**: todos los días, cada 2, cada 3 días o cada semana.
 
 ---
 
@@ -128,12 +140,16 @@ Toca el micrófono, habla, y vuelve a tocarlo para terminar. La app llena el for
 
 Frases que entiende:
 
-- "Nueva tarea, categoría Planecitos, tarea Lanzar web, subtareas: uno, crear contenido; dos, subir la web; para el viernes"
+- "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"
 - "Agrega una tarea para mañana que diga llamar a Jaime a las 3 de la tarde"
 - "Tarea parcial de cálculo, categoría Universidad, para pasado mañana"
-- "Nueva tarea categoría Mi página tarea contenido de Instagram, subtareas contenido del lunes y crear todo el contenido, para el 15 de noviembre"
+- "Nueva tarea categoría Mi página tarea contenido de Instagram, pasos contenido del lunes y crear todo el contenido, para el 15 de noviembre"
 
-Palabras clave: **categoría**, **tarea**, **subtareas** (separadas por "uno, dos, tres" o por comas), **para / fecha** (hoy, mañana, pasado mañana, un día de la semana o "15 de noviembre"), **a las** (hora).
+Palabras clave: **categoría**, **tarea**, **pasos** (separados por "uno, dos, tres" o por comas; "subtareas" también sirve, pero la voz la entiende peor), **para / fecha** (hoy, mañana, pasado mañana, un día de la semana o "15 de noviembre"), **a las** (hora).
+
+- Rutina: "Nueva tarea, categoría Universidad, tarea practicar 30 minutos de inglés, de lunes a sábado a las 7 de la noche"
+
+Para rutinas entiende: **todos los días**, **de lunes a sábado**, **de lunes a viernes**, **entre semana**.
 
 Si dices una categoría que no existe, la app la crea.
 
