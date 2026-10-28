@@ -61,14 +61,20 @@ async function resumenLocal(tareas) {
     const faltan = diasEntre(hoy, t.fecha_limite);
     return faltan > 0 && faltan === (t.recordar_dias_antes ?? 2);
   });
-  if (!deHoy.length && !proximas.length) return;
+  const insistir = pendientes.concat(tareas.filter((t) => !t.hecha && !t.fecha_limite))
+    .filter((t) => t.fecha_limite !== hoy && !(t.fecha_limite < hoy) && tocaInsistir(t, hoy));
+  if (!deHoy.length && !proximas.length && !insistir.length) return;
 
   const partes = [];
   if (deHoy.length) partes.push(`Hoy: ${deHoy.map((t) => t.titulo).slice(0, 3).join(', ')}${deHoy.length > 3 ? ` y ${deHoy.length - 3} más` : ''}`);
+  if (insistir.length) partes.push(`No te olvides: ${insistir.map((t) => t.fecha_limite ? `${t.titulo} (${cuentaRegresiva(t.fecha_limite).toLowerCase()})` : t.titulo).join(', ')}`);
   if (proximas.length) partes.push(`Se acerca: ${proximas.map((t) => `${t.titulo} (${etiquetaFecha(t.fecha_limite).toLowerCase()})`).join(', ')}`);
 
   const registro = await navigator.serviceWorker.ready;
-  await registro.showNotification(`Tienes ${deHoy.length} pendiente${deHoy.length === 1 ? '' : 's'} para hoy`, {
+  const titulo = deHoy.length
+    ? `Tienes ${deHoy.length} pendiente${deHoy.length === 1 ? '' : 's'} para hoy`
+    : 'Recordatorio de tus tareas';
+  await registro.showNotification(titulo, {
     body: partes.join('. '),
     icon: 'icons/icon-192.png',
     tag: 'resumen-local'

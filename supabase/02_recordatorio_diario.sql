@@ -28,3 +28,15 @@ select cron.schedule(
 --   select * from cron.job;
 -- Para borrarlo si te equivocaste:
 --   select cron.unschedule('recordatorio-diario-tareas');
+
+
+-- ============================================================
+-- PROBAR LAS NOTIFICACIONES YA MISMO
+-- (cambia TU-PROYECTO y TU-CLAVE-SECRETA-CRON, selecciona solo esto y dale Run)
+-- Te debe llegar "Notificación de prueba" al celular en unos segundos.
+-- ============================================================
+-- select net.http_post(
+--   url     := 'https://TU-PROYECTO.supabase.co/functions/v1/recordatorios',
+--   headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'TU-CLAVE-SECRETA-CRON'),
+--   body    := '{"prueba": true}'::jsonb
+-- );

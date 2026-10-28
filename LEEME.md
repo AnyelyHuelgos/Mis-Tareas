@@ -26,7 +26,8 @@ mis-tareas/
 ├── icons/                → Íconos de la app
 └── supabase/
     ├── 01_tablas.sql                → Crea las tablas y la seguridad
-    ├── 02_recordatorio_diario.sql   → Programa el aviso de las 7 a. m.
+    ├── 02_recordatorio_diario.sql   → Programa el aviso de las 7 a. m. (y trae la prueba)
+    ├── 03_ideas_y_recordatorios.sql → Lluvia de ideas y "recuérdame cada X días"
     └── functions/recordatorios/     → Función que envía las notificaciones
 ```
 
@@ -35,7 +36,7 @@ mis-tareas/
 ## Paso 1. Crear la base de datos (Supabase)
 
 1. Entra a supabase.com, crea una cuenta gratis y un **proyecto nuevo**.
-2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**.
+2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql`.
 3. Ve a **Authentication → Users → Add user → Create new user**. Pon tu correo y una contraseña. Marca **Auto Confirm User**.
 4. Ve a **Authentication → Sign In / Providers** y desactiva **Allow new users to sign up**. Así nadie más puede crear cuenta.
 
@@ -109,9 +110,15 @@ Te da una **Public Key** y una **Private Key**.
 
 **6.4 Activar en el celular:** abre la app y toca 🔔. Acepta el permiso.
 
+**6.5 Probar:** al final de `02_recordatorio_diario.sql` hay un bloque de PRUEBA. Quítale los `--`, cambia tus datos y córrelo. Te debe llegar "Notificación de prueba" al celular.
+
 > En iPhone las notificaciones solo funcionan si la app está instalada en la pantalla de inicio (iOS 16.4 o más reciente).
 
-Cada tarea tiene el campo **Avisarme** (el mismo día, 1, 2, 3 o 7 días antes). El resumen de la mañana incluye lo de hoy, lo atrasado y lo que vence según ese aviso.
+Cada tarea tiene dos opciones de aviso:
+- **Avisarme**: una vez, X días antes de la fecha límite.
+- **Insistirme hasta que la marque como hecha**: todos los días, cada 2, cada 3 días o cada semana, hasta que la completes.
+
+El resumen de la mañana incluye lo de hoy, lo atrasado, lo que se acerca y lo que toca insistirte.
 
 ---
 
@@ -129,6 +136,16 @@ Frases que entiende:
 Palabras clave: **categoría**, **tarea**, **subtareas** (separadas por "uno, dos, tres" o por comas), **para / fecha** (hoy, mañana, pasado mañana, un día de la semana o "15 de noviembre"), **a las** (hora).
 
 Si dices una categoría que no existe, la app la crea.
+
+**Para ideas sueltas** (van a la Lluvia de ideas de la categoría, no al calendario):
+- "Añade una nueva lluvia de ideas a Planecitos que diga voy a armar 50 libros, 50 cuentos y 50 imprimibles"
+- "Nueva idea en Mi página: hacer un reel de mi rutina"
+
+Tómate tu tiempo: la app espera tus pausas y solo termina cuando tocas **Listo** o tras 12 segundos de silencio.
+
+## El blog de cada categoría
+
+En **Categorías**, toca una para abrir su página: lluvia de ideas, próximas entregas con cuántos días faltan, tareas sin fecha y completadas. Desde una idea puedes tocar **Pasar a tarea** cuando ya sepas cuándo hacerla.
 
 > La voz funciona mejor en **Chrome de Android**. En iPhone es más limitada, sobre todo con la app instalada.
 

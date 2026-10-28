@@ -59,3 +59,22 @@ function horaBonita(hhmm) {
   h = h % 12 || 12;
   return `${h}:${String(m).padStart(2, '0')} ${sufijo}`;
 }
+
+// ¿Hoy toca insistir con esta tarea? (recordatorio "cada X días hasta que la marque")
+// Cuenta los días desde que la creaste: cada 2 días = día 2, 4, 6…
+function tocaInsistir(tarea, hoy = hoyISO()) {
+  const cada = tarea.recordar_cada || 0;
+  if (!cada || tarea.hecha) return false;
+  const creada = aISO(new Date(tarea.creado_en));
+  const dias = diasEntre(creada, hoy);
+  return dias > 0 && dias % cada === 0;
+}
+
+// "Faltan 3 días", "Vence hoy", "Atrasada 2 días"
+function cuentaRegresiva(iso) {
+  const d = diasEntre(hoyISO(), iso);
+  if (d === 0) return 'Vence hoy';
+  if (d === 1) return 'Vence mañana';
+  if (d > 1) return `Faltan ${d} días`;
+  return `Atrasada ${-d} día${d === -1 ? '' : 's'}`;
+}

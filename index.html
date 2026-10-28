@@ -108,6 +108,7 @@
         </label>
         <label>Avisarme
           <select id="tRecordar">
+            <option value="-1">No avisar</option>
             <option value="0">El mismo día</option>
             <option value="1">1 día antes</option>
             <option value="2" selected>2 días antes</option>
@@ -116,6 +117,16 @@
           </select>
         </label>
       </div>
+
+      <label>Insistirme hasta que la marque como hecha
+        <select id="tRecordarCada">
+          <option value="0">No</option>
+          <option value="1">Todos los días</option>
+          <option value="2">Cada 2 días</option>
+          <option value="3">Cada 3 días</option>
+          <option value="7">Cada semana</option>
+        </select>
+      </label>
 
       <fieldset class="subtareas-editor">
         <legend>Subtareas</legend>
@@ -132,6 +143,26 @@
         <span class="espacio"></span>
         <button type="button" class="btn suave" data-cerrar>Cancelar</button>
         <button type="submit" class="btn primario">Guardar tarea</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ============ DIÁLOGO: IDEA ============ -->
+  <dialog id="dlgIdea">
+    <form id="formIdea">
+      <h2 id="dlgIdeaTitulo">Nueva idea</h2>
+      <p class="transcripcion" id="transcripcionIdea" hidden></p>
+      <label>Categoría
+        <select id="iCategoria" required></select>
+      </label>
+      <label>Tu idea
+        <textarea id="iTexto" rows="4" required placeholder="Ej: Armar 50 cuentos y 50 imprimibles"></textarea>
+      </label>
+      <div class="acciones">
+        <button type="button" class="btn suave peligro" id="btnEliminarIdea" hidden>Eliminar</button>
+        <span class="espacio"></span>
+        <button type="button" class="btn suave" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn primario">Guardar idea</button>
       </div>
     </form>
   </dialog>
@@ -164,14 +195,14 @@
       <button type="button" class="btn rosa" id="btnListoVoz">Listo</button>
     </div>
     <button type="button" class="enlace" id="btnEscribirEnVez">Prefiero escribirlo</button>
-    <p class="ayuda-voz">Ej: "Nueva tarea, categoría Planecitos, tarea Lanzar web, subtareas: uno, crear contenido; dos, subir la web; para el viernes"</p>
+    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, subtareas: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"</p>
   </div>
 
   <!-- ============ DIÁLOGO: ESCRIBIR COMO SI HABLARAS ============ -->
   <dialog id="dlgEscribir">
     <form id="formEscribir">
-      <h2>Escribe tu tarea</h2>
-      <p class="ayuda">Escríbela como la dirías en voz alta. Ej: "categoría Universidad, tarea parcial de cálculo, subtareas repasar y hacer taller, para el viernes"</p>
+      <h2>Escribe tu tarea o idea</h2>
+      <p class="ayuda">Escríbela como la dirías en voz alta. Ej: "categoría Universidad, tarea parcial de cálculo, subtareas repasar y hacer taller, para el viernes" o "idea en Planecitos que diga armar 50 cuentos"</p>
       <label>Tu tarea
         <textarea id="eTexto" rows="4" required></textarea>
       </label>

@@ -40,15 +40,17 @@ const DB = {
 
   // ---------- Cargar todo ----------
   async cargarTodo() {
-    const [categorias, tareas, subtareas] = await Promise.all([
+    const [categorias, tareas, subtareas, ideas] = await Promise.all([
       sb.from('categorias').select('*').order('creado_en'),
       sb.from('tareas').select('*').order('fecha_limite', { ascending: true, nullsFirst: false }),
-      sb.from('subtareas').select('*').order('orden')
+      sb.from('subtareas').select('*').order('orden'),
+      sb.from('ideas').select('*').order('creado_en', { ascending: false })
     ]);
     return {
       categorias: revisar(categorias),
       tareas: revisar(tareas),
-      subtareas: revisar(subtareas)
+      subtareas: revisar(subtareas),
+      ideas: revisar(ideas)
     };
   },
 
@@ -85,6 +87,17 @@ const DB = {
   async eliminarSubtareas(ids) {
     if (!ids.length) return;
     revisar(await sb.from('subtareas').delete().in('id', ids));
+  },
+
+  // ---------- Ideas ----------
+  async crearIdea(datos) {
+    return revisar(await sb.from('ideas').insert(datos).select().single());
+  },
+  async editarIdea(id, datos) {
+    return revisar(await sb.from('ideas').update(datos).eq('id', id).select().single());
+  },
+  async eliminarIdea(id) {
+    revisar(await sb.from('ideas').delete().eq('id', id));
   },
 
   // ---------- Notificaciones ----------

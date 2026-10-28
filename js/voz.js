@@ -16,7 +16,11 @@ function vozDisponible() { return Boolean(Reconocedor); }
 // Empieza a escuchar.
 // - alTexto(texto): se llama mientras hablas, para mostrarlo en vivo.
 // - alTerminar({ texto, cancelado, huboError }): se llama siempre al final.
-// Se detiene sola tras 5 segundos de silencio, o al tocar "Listo".
+// Es PACIENTE: si haces una pausa, sigue escuchando. Solo termina cuando
+// tocas "Listo", tras 12 segundos de silencio o al llegar a 90 segundos.
+const SILENCIO_MAXIMO = 12000;
+const DURACION_MAXIMA = 90000;
+
 function escuchar({ alTerminar, alEmpezar, alError, alTexto }) {
   if (!Reconocedor) {
     alError?.('Este navegador no tiene reconocimiento de voz. Usa Chrome, o escríbelo.');
@@ -27,20 +31,25 @@ function escuchar({ alTerminar, alEmpezar, alError, alTexto }) {
   let finales = '';
   let parcial = '';
   let cancelado = false;
-  let huboError = false;
+  let terminar = false;     // true cuando ya queremos cerrar de verdad
+  let errorGrave = false;
   let silencio;
+  const limite = Date.now() + DURACION_MAXIMA;
 
   const rec = new Reconocedor();
   rec.lang = CONFIG.IDIOMA_VOZ;
-  rec.continuous = true;      // sigue escuchando aunque hagas pausas
-  rec.interimResults = true;  // nos da el texto mientras hablas
+  rec.continuous = true;
+  rec.interimResults = true;
 
   const reiniciarSilencio = () => {
     clearTimeout(silencio);
-    silencio = setTimeout(() => rec.stop(), 5000);
+    silencio = setTimeout(() => { terminar = true; rec.stop(); }, SILENCIO_MAXIMO);
   };
 
-  rec.onstart = () => { alEmpezar?.(); reiniciarSilencio(); };
+  let yaEmpezo = false;
+  rec.onstart = () => {
+    if (!yaEmpezo) { yaEmpezo = true; alEmpezar?.(); reiniciarSilencio(); }
+  };
 
   rec.onresult = (e) => {
     parcial = '';
@@ -54,11 +63,11 @@ function escuchar({ alTerminar, alEmpezar, alError, alTexto }) {
   };
 
   rec.onerror = (e) => {
-    if (e.error === 'aborted') return;
-    huboError = true;
+    // "no-speech" y "aborted" no son graves: solo hiciste silencio o cancelaste
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    errorGrave = true;
     const mensajes = {
       'not-allowed': 'Debes dar permiso al micrófono.',
-      'no-speech': 'No escuché nada. Intenta de nuevo.',
       'network': 'El reconocimiento de voz falló. En Edge pasa seguido: prueba en Chrome o escríbelo.',
       'audio-capture': 'No encontré un micrófono.'
     };
@@ -66,19 +75,25 @@ function escuchar({ alTerminar, alEmpezar, alError, alTexto }) {
   };
 
   rec.onend = () => {
+    // Muchos celulares cortan solos en cada pausa: si no queríamos terminar, seguimos
+    if (!cancelado && !terminar && !errorGrave && Date.now() < limite) {
+      finales += ' ' + parcial;
+      parcial = '';
+      try { rec.start(); return; } catch (_) { /* si no deja reiniciar, terminamos */ }
+    }
     clearTimeout(silencio);
     reconocimiento = null;
-    // Si no alcanzó a "confirmar" el texto, usamos lo último que oyó
-    const texto = (finales + ' ' + parcial).trim();
-    alTerminar?.({ texto: cancelado ? '' : texto, cancelado, huboError });
+    const texto = (finales + ' ' + parcial).replace(/\s+/g, ' ').trim();
+    alTerminar?.({ texto: cancelado ? '' : texto, cancelado, huboError: errorGrave });
   };
 
-  rec._cancelar = () => { cancelado = true; rec.abort(); };
+  rec._terminar = () => { terminar = true; rec.stop(); };
+  rec._cancelar = () => { cancelado = true; terminar = true; rec.abort(); };
   reconocimiento = rec;
   rec.start();
 }
 
-function detenerVoz() { reconocimiento?.stop(); }
+function detenerVoz() { reconocimiento?._terminar(); }
 function cancelarVoz() { reconocimiento?._cancelar(); }
 function escuchandoAhora() { return reconocimiento !== null; }
 
@@ -248,5 +263,48 @@ function interpretarComando(textoOriginal, categorias) {
     resultado.subtareas = piezas.map((p) => mayuscula(limpiar(p))).filter(Boolean);
   }
 
+  return resultado;
+}
+
+
+// ------------------------------------------------------------
+// IDEAS: "añade una nueva lluvia de ideas a Planecitos que diga…"
+// ------------------------------------------------------------
+function esIdea(texto) {
+  const t = sinTildes(texto).slice(0, 60);
+  return /\b(lluvia de ideas|idea|ideas|apunte)\b/.test(t) && !/\btarea\b/.test(t.split(/idea/)[0]);
+}
+
+function interpretarIdea(textoOriginal, categorias) {
+  const t = { original: ' ' + textoOriginal.normalize('NFC') + ' ', bajo: '' };
+  t.bajo = sinTildes(t.original);
+  const resultado = { texto: '', categoriaId: null, categoriaNueva: null };
+
+  // 1) Quitar la orden: "oye, añade una nueva lluvia de ideas"
+  const mo = t.bajo.match(/^\s*(?:oye[\s,]*)?(?:por favor[\s,]*)?(?:agrega(?:r|me)?|anade|anadir|anota(?:r|me)?|guarda(?:r|me)?|crea(?:r)?|pon(?:er|me)?|nueva)?\s*(?:una|un|esta|la)?\s*(?:nueva|nuevo)?\s*(?:lluvia de ideas|idea|ideas|apunte)\b/);
+  if (mo) borrarTramo(t, mo.index, mo.index + mo[0].length);
+
+  // 2) Buscar la categoría: "a Planecitos", "en Planecitos", "categoría Planecitos"
+  let encontrada = null;
+  for (const c of categorias) {
+    const n = sinTildes(c.nombre).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:\\b(?:a|en|para|de|categoria)\\s+(?:la\\s+)?(?:categoria\\s+)?)?\\b${n}\\b`);
+    const m = t.bajo.match(re);
+    if (m) { encontrada = c; borrarTramo(t, m.index, m.index + m[0].length); break; }
+  }
+  if (encontrada) resultado.categoriaId = encontrada.id;
+  else {
+    // "categoría Gimnasio que diga…" con una categoría que aún no existe
+    const mc = t.bajo.match(/\bcategoria\s+([a-z0-9 ]+?)(?=\s+(?:que diga|que dice|dice)\b|[,.:]|$)/);
+    if (mc) {
+      resultado.categoriaNueva = mayuscula(limpiar(t.original.slice(mc.index + mc[0].length - mc[1].length, mc.index + mc[0].length)));
+      borrarTramo(t, mc.index, mc.index + mc[0].length);
+    }
+  }
+
+  // 3) El texto de la idea: lo que queda, sin "que diga"
+  let texto = limpiar(t.original);
+  texto = texto.replace(/^(?:[,.:]\s*)?(?:que diga|que dice|dice|diciendo|de que)\s*[,:]?\s*/i, '');
+  resultado.texto = mayuscula(limpiar(texto));
   return resultado;
 }

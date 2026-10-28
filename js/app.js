@@ -8,11 +8,12 @@ const estado = {
   categorias: [],
   tareas: [],
   subtareas: [],
-  vista: 'hoy',              // hoy | semana | calendario | categorias
+  ideas: [],
+  vista: 'hoy',              // hoy | semana | calendario | categorias | categoria
+  categoriaAbierta: null,    // id de la categoría que estás viendo como "blog"
   filtroCategoria: null,     // id de categoría o null = todas
   diaSeleccionado: hoyISO(),
-  mes: { anio: new Date().getFullYear(), mes: new Date().getMonth() },
-  categoriasAbiertas: new Set()
+  mes: { anio: new Date().getFullYear(), mes: new Date().getMonth() }
 };
 
 // Lila, rosado, oliva, café, beige oscuro, ciruela, salvia, rosa viejo, lavanda, terracota suave
@@ -134,17 +135,19 @@ $('#btnSalir').addEventListener('click', async () => {
 // ============================================================
 function render() {
   renderChips();
+  const vistaMenu = estado.vista === 'categoria' ? 'categorias' : estado.vista;
   document.querySelectorAll('.barra-inferior [data-vista]').forEach((b) =>
-    b.classList.toggle('activa', b.dataset.vista === estado.vista));
+    b.classList.toggle('activa', b.dataset.vista === vistaMenu));
 
-  const vistas = { hoy: vistaHoy, semana: vistaSemana, calendario: vistaCalendario, categorias: vistaCategorias };
+  const vistas = { hoy: vistaHoy, semana: vistaSemana, calendario: vistaCalendario, categorias: vistaCategorias, categoria: vistaCategoria };
   contenido.innerHTML = vistas[estado.vista]();
 }
 
 function renderChips() {
-  const chips = [`<button class="chip ${!estado.filtroCategoria ? 'activo' : ''}" data-accion="filtrar" data-id="">Todas</button>`];
+  const activa = estado.vista === 'categoria' ? estado.categoriaAbierta : estado.filtroCategoria;
+  const chips = [`<button class="chip ${!activa ? 'activo' : ''}" data-accion="filtrar" data-id="">Todas</button>`];
   estado.categorias.forEach((c) => {
-    chips.push(`<button class="chip ${estado.filtroCategoria === c.id ? 'activo' : ''}" data-accion="filtrar" data-id="${c.id}">
+    chips.push(`<button class="chip ${activa === c.id ? 'activo' : ''}" data-accion="filtrar" data-id="${c.id}">
       <span class="punto" style="background:${c.color}"></span>${esc(c.nombre)}</button>`);
   });
   chips.push('<button class="chip nuevo" data-accion="nueva-categoria">+ Categoría</button>');
@@ -161,7 +164,8 @@ function htmlTarea(t) {
 
   const meta = [];
   if (cat && !estado.filtroCategoria) meta.push(`<span class="etiqueta-cat">${esc(cat.nombre)}</span>`);
-  if (t.fecha_limite) meta.push(`<span class="${vencida ? 'vencida' : ''}">${vencida ? 'Venció: ' : ''}${etiquetaFecha(t.fecha_limite)}</span>`);
+  if (t.fecha_limite) meta.push(`<span class="${vencida ? 'vencida' : ''}">${etiquetaFecha(t.fecha_limite)}${!t.hecha ? ` (${cuentaRegresiva(t.fecha_limite).toLowerCase()})` : ''}</span>`);
+  if (t.recordar_cada && !t.hecha) meta.push(`<span>↻ ${t.recordar_cada === 1 ? 'Te recuerdo a diario' : `Te recuerdo cada ${t.recordar_cada} días`}</span>`);
   if (t.hora) meta.push(`<span>${horaBonita(t.hora)}</span>`);
   if (t.prioridad === 'alta' && !t.hecha) meta.push('<span class="prioridad-alta">Prioridad alta</span>');
   if (subs.length) meta.push(`<span>${hechas} de ${subs.length} subtareas</span>`);
@@ -208,19 +212,20 @@ function htmlProgreso(lista, etiqueta) {
 }
 
 // ---------- Vista: HOY ----------
+// Solo lo de hoy: lo que vence hoy, lo atrasado y lo que hoy toca recordarte.
 function vistaHoy() {
   const hoy = hoyISO();
   const lista = tareasFiltradas();
-  const vencidas = lista.filter((t) => !t.hecha && t.fecha_limite && t.fecha_limite < hoy);
   const deHoy = lista.filter((t) => t.fecha_limite === hoy);
-  const sinFecha = lista.filter((t) => !t.fecha_limite && !t.hecha);
+  const vencidas = lista.filter((t) => !t.hecha && t.fecha_limite && t.fecha_limite < hoy);
+  const yaListadas = new Set([...deHoy, ...vencidas].map((t) => t.id));
+  const recordatorios = lista.filter((t) => !yaListadas.has(t.id) && tocaInsistir(t, hoy));
 
-  let html = htmlProgreso([...vencidas, ...deHoy], 'hechas hoy');
-
-  if (vencidas.length) html += `<h2 class="titulo-seccion">Atrasadas <small>${vencidas.length}</small></h2>${htmlLista(vencidas)}`;
+  let html = htmlProgreso(deHoy, 'hechas hoy');
   html += `<h2 class="titulo-seccion">Para hoy <small>${deHoy.length}</small></h2>`;
   html += deHoy.length ? htmlLista(deHoy) : htmlVacio('No tienes nada para hoy.');
-  if (sinFecha.length) html += `<h2 class="titulo-seccion">Sin fecha <small>${sinFecha.length}</small></h2>${htmlLista(sinFecha)}`;
+  if (vencidas.length) html += `<h2 class="titulo-seccion">Atrasadas <small>${vencidas.length}</small></h2>${htmlLista(vencidas)}`;
+  if (recordatorios.length) html += `<h2 class="titulo-seccion">No te olvides <small>${recordatorios.length}</small></h2>${htmlLista(recordatorios)}`;
   return html;
 }
 
@@ -255,37 +260,86 @@ function vistaCalendario() {
     + (delDia.length ? htmlLista(delDia) : htmlVacio('Nada este día.'));
 }
 
-// ---------- Vista: CATEGORÍAS ----------
+// ---------- Vista: CATEGORÍAS (lista) ----------
 function vistaCategorias() {
-  const cats = estado.filtroCategoria
-    ? estado.categorias.filter((c) => c.id === estado.filtroCategoria)
-    : estado.categorias;
-
   let html = `<h2 class="titulo-seccion">Tus categorías
     <button class="btn suave" data-accion="nueva-categoria">+ Nueva categoría</button></h2>`;
+  if (!estado.categorias.length) return html + htmlVacio('Crea tu primera categoría para empezar.', false);
 
-  if (!cats.length) return html + htmlVacio('Crea tu primera categoría para empezar.', false);
-
-  cats.forEach((c) => {
+  const hoy = hoyISO();
+  estado.categorias.forEach((c) => {
     const delaCat = estado.tareas.filter((t) => t.categoria_id === c.id);
-    const hechas = delaCat.filter((t) => t.hecha).length;
+    const pendientes = delaCat.filter((t) => !t.hecha);
+    const hechas = delaCat.length - pendientes.length;
+    const ideas = estado.ideas.filter((i) => i.categoria_id === c.id && !i.convertida).length;
+    const proxima = pendientes.filter((t) => t.fecha_limite).sort((a, b) => a.fecha_limite < b.fecha_limite ? -1 : 1)[0];
     const pct = delaCat.length ? Math.round((hechas / delaCat.length) * 100) : 0;
-    const abierta = estado.categoriasAbiertas.has(c.id);
     html += `
-      <section class="cat-tarjeta" style="--color-cat:${c.color}">
+      <button class="cat-tarjeta cat-boton" style="--color-cat:${c.color}" data-accion="abrir-categoria" data-id="${c.id}">
         <div class="cat-cabeza">
-          <div data-accion="abrir-categoria" data-id="${c.id}" style="flex:1;cursor:pointer">
-            <h3>${esc(c.nombre)}</h3>
-            <small>${hechas} de ${delaCat.length} hechas ${abierta ? '▴' : '▾'}</small>
-          </div>
-          <button class="btn suave" data-accion="editar-categoria" data-id="${c.id}">Editar</button>
+          <h3>${esc(c.nombre)}</h3>
+          <span class="flecha" aria-hidden="true">›</span>
         </div>
+        <p class="cat-resumen">${pendientes.length} pendiente${pendientes.length === 1 ? '' : 's'}, ${ideas} idea${ideas === 1 ? '' : 's'}</p>
+        ${proxima ? `<p class="cat-proxima ${proxima.fecha_limite < hoy ? 'vencida' : ''}">Próxima: ${esc(proxima.titulo)} (${cuentaRegresiva(proxima.fecha_limite).toLowerCase()})</p>` : ''}
         <div class="barra"><div class="barra-relleno" style="width:${pct}%"></div></div>
-        ${abierta ? `<div class="cat-tareas">${delaCat.length ? htmlLista(delaCat) : '<p class="vacio">Sin tareas todavía.</p>'}
-          <button class="btn suave" data-accion="nueva-tarea" data-categoria="${c.id}">+ Tarea en ${esc(c.nombre)}</button></div>` : ''}
-      </section>`;
+      </button>`;
   });
   return html;
+}
+
+// ---------- Vista: UNA CATEGORÍA (su "blog") ----------
+function htmlIdea(i) {
+  return `
+    <article class="idea ${i.convertida ? 'convertida' : ''}">
+      <p class="idea-texto">${esc(i.texto)}</p>
+      <div class="idea-pie">
+        <span>${i.convertida ? 'Ya es tarea' : etiquetaFecha(aISO(new Date(i.creado_en)))}</span>
+        <span class="espacio"></span>
+        ${i.convertida ? '' : `<button class="mini" data-accion="idea-a-tarea" data-id="${i.id}">Pasar a tarea</button>`}
+        <button class="mini" data-accion="editar-idea" data-id="${i.id}">Editar</button>
+      </div>
+    </article>`;
+}
+
+function vistaCategoria() {
+  const c = categoriaPorId(estado.categoriaAbierta);
+  if (!c) { estado.vista = 'categorias'; return vistaCategorias(); }
+
+  const delaCat = estado.tareas.filter((t) => t.categoria_id === c.id);
+  const pendientes = delaCat.filter((t) => !t.hecha);
+  const conFecha = pendientes.filter((t) => t.fecha_limite);
+  const sinFecha = pendientes.filter((t) => !t.fecha_limite);
+  const hechas = delaCat.filter((t) => t.hecha);
+  const ideas = estado.ideas.filter((i) => i.categoria_id === c.id);
+  const ideasActivas = ideas.filter((i) => !i.convertida);
+  const pct = delaCat.length ? Math.round((hechas.length / delaCat.length) * 100) : 0;
+
+  return `
+    <button class="volver" data-accion="volver-categorias">‹ Categorías</button>
+    <section class="blog-portada" style="--color-cat:${c.color}">
+      <h2>${esc(c.nombre)}</h2>
+      <p>${pendientes.length} pendiente${pendientes.length === 1 ? '' : 's'}, ${hechas.length} hecha${hechas.length === 1 ? '' : 's'}, ${ideasActivas.length} idea${ideasActivas.length === 1 ? '' : 's'}</p>
+      <div class="barra"><div class="barra-relleno" style="width:${pct}%"></div></div>
+      <div class="blog-botones">
+        <button class="btn primario" data-accion="nueva-tarea" data-categoria="${c.id}">+ Tarea</button>
+        <button class="btn suave" data-accion="editar-categoria" data-id="${c.id}">Editar categoría</button>
+      </div>
+    </section>
+
+    <h2 class="titulo-seccion">Lluvia de ideas <small>${ideasActivas.length}</small></h2>
+    <form class="idea-rapida" data-form="idea-rapida" data-categoria="${c.id}">
+      <input type="text" name="texto" placeholder="Anota una idea suelta…" maxlength="500" aria-label="Nueva idea">
+      <button class="btn rosa" type="submit">Guardar</button>
+    </form>
+    <div class="ideas">${ideas.length ? ideas.map(htmlIdea).join('') : '<p class="vacio">Aquí van tus ideas sueltas. También puedes dictarlas con el micrófono.</p>'}</div>
+
+    <h2 class="titulo-seccion">Próximas entregas <small>${conFecha.length}</small></h2>
+    ${conFecha.length ? htmlLista(conFecha) : '<p class="vacio">Sin entregas con fecha.</p>'}
+
+    ${sinFecha.length ? `<h2 class="titulo-seccion">Sin fecha <small>${sinFecha.length}</small></h2>${htmlLista(sinFecha)}` : ''}
+    ${hechas.length ? `<h2 class="titulo-seccion">Completadas <small>${hechas.length}</small></h2>${htmlLista(hechas)}` : ''}
+  `;
 }
 
 // ============================================================
@@ -298,9 +352,27 @@ document.addEventListener('click', async (e) => {
 
   switch (accion) {
     case 'filtrar':
-      estado.filtroCategoria = id || null;
+      if (estado.vista === 'categoria' || estado.vista === 'categorias') {
+        if (id) { estado.vista = 'categoria'; estado.categoriaAbierta = id; }
+        else estado.vista = 'categorias';
+      } else {
+        estado.filtroCategoria = id || null;
+      }
+      render();
+      window.scrollTo(0, 0);
+      break;
+    case 'volver-categorias':
+      estado.vista = 'categorias';
       render();
       break;
+    case 'editar-idea':
+      abrirIdea(estado.ideas.find((i) => i.id === id));
+      break;
+    case 'idea-a-tarea': {
+      const idea = estado.ideas.find((i) => i.id === id);
+      abrirTarea(null, { titulo: idea.texto.slice(0, 140), categoria_id: idea.categoria_id, ideaId: idea.id });
+      break;
+    }
     case 'nueva-tarea':
       abrirTarea(null, { categoria_id: el.dataset.categoria || estado.filtroCategoria });
       break;
@@ -320,8 +392,10 @@ document.addEventListener('click', async (e) => {
       abrirCategoria(categoriaPorId(id));
       break;
     case 'abrir-categoria':
-      estado.categoriasAbiertas.has(id) ? estado.categoriasAbiertas.delete(id) : estado.categoriasAbiertas.add(id);
+      estado.vista = 'categoria';
+      estado.categoriaAbierta = id;
       render();
+      window.scrollTo(0, 0);
       break;
     case 'elegir-dia':
       estado.diaSeleccionado = el.dataset.fecha;
@@ -340,7 +414,26 @@ document.addEventListener('click', async (e) => {
 document.querySelectorAll('.barra-inferior [data-vista]').forEach((b) =>
   b.addEventListener('click', () => { estado.vista = b.dataset.vista; render(); window.scrollTo(0, 0); }));
 
-$('#btnNuevaTarea').addEventListener('click', () => abrirTarea(null, { categoria_id: estado.filtroCategoria }));
+function categoriaActual() {
+  return estado.vista === 'categoria' ? estado.categoriaAbierta : estado.filtroCategoria;
+}
+$('#btnNuevaTarea').addEventListener('click', () => abrirTarea(null, { categoria_id: categoriaActual() }));
+
+// Guardar idea rápida desde el "blog" de la categoría
+document.addEventListener('submit', async (e) => {
+  const form = e.target.closest('[data-form="idea-rapida"]');
+  if (!form) return;
+  e.preventDefault();
+  const texto = form.texto.value.trim();
+  if (!texto) return;
+  try {
+    await DB.crearIdea({ categoria_id: form.dataset.categoria, texto });
+    toast('Idea guardada');
+    await recargar();
+  } catch (err) {
+    toast('No se pudo guardar la idea.');
+  }
+});
 
 // ---------- Marcar como hecha ----------
 async function marcarTarea(id, hecha) {
@@ -393,6 +486,7 @@ async function marcarSubtarea(id, hecha) {
 // ============================================================
 const dlgTarea = $('#dlgTarea');
 let tareaEditando = null;
+let ideaOrigen = null; // si la tarea viene de "Pasar a tarea"
 
 function filaSubtarea(titulo = '', id = '') {
   const li = document.createElement('li');
@@ -412,6 +506,7 @@ function abrirTarea(tarea, prellenado = {}, transcripcion = '') {
     return;
   }
   tareaEditando = tarea || null;
+  ideaOrigen = prellenado.ideaId || null;
   const datos = tarea || prellenado;
 
   $('#dlgTareaTitulo').textContent = tarea ? 'Editar tarea' : 'Nueva tarea';
@@ -427,6 +522,7 @@ function abrirTarea(tarea, prellenado = {}, transcripcion = '') {
   $('#tHora').value = datos.hora ? datos.hora.slice(0, 5) : '';
   $('#tPrioridad').value = datos.prioridad || 'media';
   $('#tRecordar').value = String(datos.recordar_dias_antes ?? 2);
+  $('#tRecordarCada').value = String(datos.recordar_cada ?? 0);
   $('#tNotas').value = datos.notas || '';
 
   const lista = $('#listaSubEditor');
@@ -454,6 +550,7 @@ $('#formTarea').addEventListener('submit', async (e) => {
     hora: $('#tHora').value || null,
     prioridad: $('#tPrioridad').value,
     recordar_dias_antes: Number($('#tRecordar').value),
+    recordar_cada: Number($('#tRecordarCada').value),
     notas: $('#tNotas').value.trim() || null
   };
   if (!datos.titulo) return;
@@ -467,6 +564,7 @@ $('#formTarea').addEventListener('submit', async (e) => {
     if (!tareaEditando) {
       const nueva = await DB.crearTarea(datos);
       await DB.crearSubtareas(filas.map((f) => ({ tarea_id: nueva.id, titulo: f.titulo, orden: f.orden })));
+      if (ideaOrigen) await DB.editarIdea(ideaOrigen, { convertida: true });
       toast('Tarea guardada');
     } else {
       await DB.editarTarea(tareaEditando.id, datos);
@@ -549,10 +647,12 @@ $('#formCategoria').addEventListener('submit', async (e) => {
 $('#btnEliminarCat').addEventListener('click', async () => {
   if (!categoriaEditando) return;
   const n = estado.tareas.filter((t) => t.categoria_id === categoriaEditando.id).length;
-  if (!confirm(`¿Eliminar "${categoriaEditando.nombre}"?${n ? ` También se borrarán sus ${n} tareas.` : ''}`)) return;
+  const ni = estado.ideas.filter((i) => i.categoria_id === categoriaEditando.id).length;
+  if (!confirm(`¿Eliminar "${categoriaEditando.nombre}"?${n || ni ? ` También se borrarán sus ${n} tareas y ${ni} ideas.` : ''}`)) return;
   try {
     await DB.eliminarCategoria(categoriaEditando.id);
     if (estado.filtroCategoria === categoriaEditando.id) estado.filtroCategoria = null;
+    if (estado.categoriaAbierta === categoriaEditando.id) estado.vista = 'categorias';
     dlgCategoria.close();
     toast('Categoría eliminada');
     await recargar();
@@ -611,7 +711,27 @@ $('#formEscribir').addEventListener('submit', (e) => {
   procesarVoz(texto);
 });
 
+// Crea la categoría si la nombraste y no existe; devuelve su id
+async function asegurarCategoria(idEncontrada, nombreNuevo) {
+  if (idEncontrada || !nombreNuevo) return idEncontrada;
+  try {
+    const nueva = await DB.crearCategoria({ nombre: nombreNuevo, color: COLORES[estado.categorias.length % COLORES.length] });
+    await recargar();
+    toast(`Creé la categoría "${nueva.nombre}"`);
+    return nueva.id;
+  } catch (err) {
+    toast('No pude crear la categoría.');
+    return null;
+  }
+}
+
 async function procesarVoz(texto) {
+  if (esIdea(texto)) {
+    const r = interpretarIdea(texto, estado.categorias);
+    const categoriaId = await asegurarCategoria(r.categoriaId, r.categoriaNueva);
+    abrirIdea(null, { texto: r.texto, categoria_id: categoriaId || categoriaActual() }, texto);
+    return;
+  }
   const r = interpretarComando(texto, estado.categorias);
   let categoriaId = r.categoriaId;
 
@@ -633,12 +753,59 @@ async function procesarVoz(texto) {
   // Abrimos el formulario ya lleno para que revises y toques "Guardar tarea"
   abrirTarea(null, {
     titulo: r.titulo,
-    categoria_id: categoriaId || estado.filtroCategoria,
+    categoria_id: categoriaId || categoriaActual(),
     fecha_limite: r.fecha,
     hora: r.hora,
     subtareas: r.subtareas
   }, texto);
 }
+
+// ============================================================
+// DIÁLOGO DE IDEA
+// ============================================================
+const dlgIdea = $('#dlgIdea');
+let ideaEditando = null;
+
+function abrirIdea(idea, prellenado = {}, transcripcion = '') {
+  if (!estado.categorias.length) { toast('Primero crea una categoría.'); abrirCategoria(null); return; }
+  ideaEditando = idea || null;
+  const datos = idea || prellenado;
+  $('#dlgIdeaTitulo').textContent = idea ? 'Editar idea' : 'Nueva idea';
+  $('#transcripcionIdea').hidden = !transcripcion;
+  $('#transcripcionIdea').textContent = transcripcion ? `Escuché: "${transcripcion}"` : '';
+  $('#iCategoria').innerHTML = estado.categorias.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+  $('#iCategoria').value = datos.categoria_id || categoriaActual() || estado.categorias[0].id;
+  $('#iTexto').value = datos.texto || '';
+  $('#btnEliminarIdea').hidden = !idea;
+  dlgIdea.showModal();
+}
+
+$('#formIdea').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = { categoria_id: $('#iCategoria').value, texto: $('#iTexto').value.trim() };
+  if (!datos.texto) return;
+  try {
+    if (ideaEditando) await DB.editarIdea(ideaEditando.id, datos);
+    else await DB.crearIdea(datos);
+    dlgIdea.close();
+    toast(ideaEditando ? 'Idea actualizada' : 'Idea guardada');
+    await recargar();
+  } catch (err) {
+    toast('No se pudo guardar la idea.');
+  }
+});
+
+$('#btnEliminarIdea').addEventListener('click', async () => {
+  if (!ideaEditando || !confirm('¿Eliminar esta idea?')) return;
+  try {
+    await DB.eliminarIdea(ideaEditando.id);
+    dlgIdea.close();
+    toast('Idea eliminada');
+    await recargar();
+  } catch (err) {
+    toast('No se pudo eliminar.');
+  }
+});
 
 // ============================================================
 // NOTIFICACIONES E INSTALACIÓN
