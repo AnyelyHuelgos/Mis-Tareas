@@ -11,7 +11,7 @@ const CONFIG = {
 
   // Llave PÚBLICA de notificaciones (paso 6 del LEEME).
   // Si la dejas así, la app funciona igual, pero sin notificaciones push.
-  VAPID_PUBLIC_KEY: 'PEGA-AQUI-TU-VAPID-PUBLIC-KEY',
+  VAPID_PUBLIC_KEY: 'BIDjrFWAmpIP4-fPY_99sPDAZ54rbFHsvUs3Y8dga8-wZygy3_ehNiKHzDup1zavRjEirp2PVeJ9yr20qkStdCE',
 
   // Idioma del reconocimiento de voz
   IDIOMA_VOZ: 'es-CO'
