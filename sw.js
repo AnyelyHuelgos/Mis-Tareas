@@ -4,7 +4,7 @@
 // 2. Recibe las notificaciones push y las muestra en el celular.
 // Cada vez que cambies archivos, sube la versión (v1 -> v2) para que se actualice.
 // ============================================================
-const CACHE = 'mis-tareas-v1';
+const CACHE = 'mis-tareas-v2';
 const ARCHIVOS = [
   './',
   './index.html',

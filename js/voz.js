@@ -13,40 +13,73 @@ let reconocimiento = null;
 
 function vozDisponible() { return Boolean(Reconocedor); }
 
-// Empieza a escuchar. Se detiene al llamar detenerVoz() o cuando haces silencio largo.
-function escuchar({ alTerminar, alEmpezar, alError }) {
+// Empieza a escuchar.
+// - alTexto(texto): se llama mientras hablas, para mostrarlo en vivo.
+// - alTerminar({ texto, cancelado, huboError }): se llama siempre al final.
+// Se detiene sola tras 5 segundos de silencio, o al tocar "Listo".
+function escuchar({ alTerminar, alEmpezar, alError, alTexto }) {
   if (!Reconocedor) {
-    alError?.('Tu navegador no tiene reconocimiento de voz. Usa Chrome en Android.');
+    alError?.('Este navegador no tiene reconocimiento de voz. Usa Chrome, o escríbelo.');
+    alTerminar?.({ texto: '', cancelado: false, huboError: true });
     return;
   }
-  let texto = '';
-  reconocimiento = new Reconocedor();
-  reconocimiento.lang = CONFIG.IDIOMA_VOZ;
-  reconocimiento.continuous = true;      // sigue escuchando aunque hagas pausas cortas
-  reconocimiento.interimResults = false;  // solo resultados finales
 
-  reconocimiento.onstart = () => alEmpezar?.();
-  reconocimiento.onresult = (e) => {
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) texto += ' ' + e.results[i][0].transcript;
-    }
+  let finales = '';
+  let parcial = '';
+  let cancelado = false;
+  let huboError = false;
+  let silencio;
+
+  const rec = new Reconocedor();
+  rec.lang = CONFIG.IDIOMA_VOZ;
+  rec.continuous = true;      // sigue escuchando aunque hagas pausas
+  rec.interimResults = true;  // nos da el texto mientras hablas
+
+  const reiniciarSilencio = () => {
+    clearTimeout(silencio);
+    silencio = setTimeout(() => rec.stop(), 5000);
   };
-  reconocimiento.onerror = (e) => {
+
+  rec.onstart = () => { alEmpezar?.(); reiniciarSilencio(); };
+
+  rec.onresult = (e) => {
+    parcial = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const trozo = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finales += ' ' + trozo;
+      else parcial += ' ' + trozo;
+    }
+    alTexto?.((finales + parcial).trim());
+    reiniciarSilencio();
+  };
+
+  rec.onerror = (e) => {
+    if (e.error === 'aborted') return;
+    huboError = true;
     const mensajes = {
       'not-allowed': 'Debes dar permiso al micrófono.',
       'no-speech': 'No escuché nada. Intenta de nuevo.',
-      'network': 'El reconocimiento de voz necesita internet.'
+      'network': 'El reconocimiento de voz falló. En Edge pasa seguido: prueba en Chrome o escríbelo.',
+      'audio-capture': 'No encontré un micrófono.'
     };
-    alError?.(mensajes[e.error] || 'No pude escucharte. Intenta de nuevo.');
+    alError?.(mensajes[e.error] || 'No pude escucharte. Intenta de nuevo o escríbelo.');
   };
-  reconocimiento.onend = () => {
+
+  rec.onend = () => {
+    clearTimeout(silencio);
     reconocimiento = null;
-    alTerminar?.(texto.trim());
+    // Si no alcanzó a "confirmar" el texto, usamos lo último que oyó
+    const texto = (finales + ' ' + parcial).trim();
+    alTerminar?.({ texto: cancelado ? '' : texto, cancelado, huboError });
   };
-  reconocimiento.start();
+
+  rec._cancelar = () => { cancelado = true; rec.abort(); };
+  reconocimiento = rec;
+  rec.start();
 }
 
 function detenerVoz() { reconocimiento?.stop(); }
+function cancelarVoz() { reconocimiento?._cancelar(); }
 function escuchandoAhora() { return reconocimiento !== null; }
 
 // ------------------------------------------------------------

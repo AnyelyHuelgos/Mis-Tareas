@@ -31,7 +31,7 @@ mis-tareas/
 ```
 
 ---
- 
+
 ## Paso 1. Crear la base de datos (Supabase)
 
 1. Entra a supabase.com, crea una cuenta gratis y un **proyecto nuevo**.

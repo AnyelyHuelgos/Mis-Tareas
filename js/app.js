@@ -15,8 +15,9 @@ const estado = {
   categoriasAbiertas: new Set()
 };
 
-const COLORES = ['#4A6FA5', '#E07A5F', '#3E9B5F', '#9B5DE5', '#F2B33D',
-  '#E5487A', '#2A9D8F', '#8D6E63', '#5C7AEA', '#C8463D'];
+// Lila, rosado, oliva, café, beige oscuro, ciruela, salvia, rosa viejo, lavanda, terracota suave
+const COLORES = ['#9C83C9', '#D9839B', '#6F7D3C', '#8A5A44', '#C29A72',
+  '#7B4F78', '#8FA27A', '#B5727F', '#B7A6DB', '#C47A5A'];
 
 const CATEGORIAS_INICIALES = ['Universidad', 'Trabajo', 'Planecitos', 'Geriani', 'Mi página'];
 
@@ -567,24 +568,47 @@ document.querySelectorAll('[data-cerrar]').forEach((b) =>
 // ============================================================
 // VOZ
 // ============================================================
+function cerrarEscucha() {
+  $('#escuchando').hidden = true;
+  $('#btnVoz').classList.remove('activo');
+}
+
 $('#btnVoz').addEventListener('click', () => {
   if (escuchandoAhora()) { detenerVoz(); return; }
+  $('#textoVivo').textContent = 'Habla ahora';
   escuchar({
     alEmpezar: () => {
       $('#escuchando').hidden = false;
       $('#btnVoz').classList.add('activo');
     },
-    alTerminar: (texto) => {
-      $('#escuchando').hidden = true;
-      $('#btnVoz').classList.remove('activo');
+    alTexto: (texto) => { $('#textoVivo').textContent = texto; },
+    alError: (mensaje) => toast(mensaje),
+    alTerminar: ({ texto, cancelado, huboError }) => {
+      cerrarEscucha();
+      if (cancelado) return;
       if (texto) procesarVoz(texto);
-    },
-    alError: (mensaje) => {
-      $('#escuchando').hidden = true;
-      $('#btnVoz').classList.remove('activo');
-      toast(mensaje);
+      else if (!huboError) toast('No te escuché. Intenta de nuevo o escríbelo.');
+      if (huboError && !texto) abrirEscribir();
     }
   });
+});
+
+$('#btnListoVoz').addEventListener('click', () => detenerVoz());
+$('#btnCancelarVoz').addEventListener('click', () => { cancelarVoz(); cerrarEscucha(); });
+$('#btnEscribirEnVez').addEventListener('click', () => { cancelarVoz(); cerrarEscucha(); abrirEscribir(); });
+
+// Escribir la tarea como si la dijeras (usa el mismo intérprete que la voz)
+function abrirEscribir() {
+  $('#eTexto').value = '';
+  $('#dlgEscribir').showModal();
+  setTimeout(() => $('#eTexto').focus(), 50);
+}
+$('#formEscribir').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const texto = $('#eTexto').value.trim();
+  if (!texto) return;
+  $('#dlgEscribir').close();
+  procesarVoz(texto);
 });
 
 async function procesarVoz(texto) {
