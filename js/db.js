@@ -45,7 +45,7 @@ const DB = {
       sb.from('tareas').select('*').order('fecha_limite', { ascending: true, nullsFirst: false }),
       sb.from('subtareas').select('*').order('orden'),
       sb.from('ideas').select('*').order('creado_en', { ascending: false }),
-      sb.from('alarmas').select('*').gte('fecha', aISO(new Date(Date.now() - 7 * 86400000))).order('fecha').order('hora')
+      sb.from('alarmas').select('*').order('fecha').order('hora')
     ]);
     return {
       categorias: revisar(categorias),

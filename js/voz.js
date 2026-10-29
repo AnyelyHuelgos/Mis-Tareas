@@ -159,10 +159,21 @@ function interpretarComando(textoOriginal, categorias) {
   const t = { original: ' ' + textoOriginal.normalize('NFC') + ' ', bajo: '' };
   t.bajo = sinTildes(t.original);
 
-  const resultado = { titulo: '', categoriaId: null, categoriaNueva: null, subtareas: [], fecha: null, hora: null, repetirDias: [] };
+  const resultado = { titulo: '', categoriaId: null, categoriaNueva: null, subtareas: [], fecha: null, hora: null, repetirDias: [], cadaHoras: 0, cadaDias: 0 };
+
+  // 00) INSISTIR: "recuérdame cada 2 horas", "cada hora", "cada 3 días"
+  const mi = t.bajo.match(/\b(?:y\s+)?(?:recuerdamelo|recuerdame|recordarme|insisteme|avisame|que me recuerde)?\s*cada\s+(?:(\d{1,2}|una|un|dos|tres|cuatro)\s+)?(horas?|dias?|semana)\b/);
+  if (mi) {
+    const palabras = { una: 1, un: 1, dos: 2, tres: 3, cuatro: 4 };
+    const n = mi[1] ? (palabras[mi[1]] ?? Number(mi[1])) : 1;
+    if (mi[2].startsWith('hora')) resultado.cadaHoras = n;
+    else if (mi[2] === 'semana') resultado.cadaDias = 7;
+    else resultado.cadaDias = n;
+    borrarTramo(t, mi.index, mi.index + mi[0].length);
+  }
 
   // 0) RUTINA: "todos los días", "de lunes a sábado", "entre semana"
-  const reRepetir = /\b(?:(?:todos los dias|a diario|cada dia)(?:\s+de\s+lunes\s+a\s+(viernes|sabado|domingo))?|de lunes a (viernes|sabado|domingo)|entre semana)\b/;
+  const reRepetir = /\b(?:(?:todos los dias|a diario)(?:\s+de\s+lunes\s+a\s+(viernes|sabado|domingo))?|de lunes a (viernes|sabado|domingo)|entre semana)\b/;
   const mr = t.bajo.match(reRepetir);
   if (mr) {
     const hasta = mr[1] || mr[2] || (mr[0].includes('entre semana') ? 'viernes' : 'domingo');
@@ -332,7 +343,15 @@ function esAlarma(texto) {
 function interpretarAlarma(textoOriginal, categorias) {
   const t = { original: ' ' + textoOriginal.normalize('NFC') + ' ', bajo: '' };
   t.bajo = sinTildes(t.original);
-  const r = { titulo: '', categoriaId: null, categoriaNueva: null, fecha: hoyISO(), hora: null, avisarMin: 10 };
+  const r = { titulo: '', categoriaId: null, categoriaNueva: null, fecha: hoyISO(), hora: null, horasExtra: [], repetirDias: [], avisarMin: 10 };
+
+  // 0) Repetir: "todos los días", "de lunes a viernes"
+  const mr = t.bajo.match(/\b(?:(?:todos los dias|a diario|cada dia|diario)(?:\s+de\s+lunes\s+a\s+(viernes|sabado|domingo))?|de lunes a (viernes|sabado|domingo)|entre semana)\b/);
+  if (mr) {
+    const hasta = mr[1] || mr[2] || (mr[0].includes('entre semana') ? 'viernes' : 'domingo');
+    r.repetirDias = { viernes: [1, 2, 3, 4, 5], sabado: [1, 2, 3, 4, 5, 6], domingo: [0, 1, 2, 3, 4, 5, 6] }[hasta];
+    borrarTramo(t, mr.index, mr.index + mr[0].length);
+  }
 
   // 1) Cuánto antes avisar: "10 minutos antes", "media hora antes", "una hora antes"
   const ma = t.bajo.match(/\b(?:y\s+)?(?:avisame|avisarme|recuerdame|que me avise|me avisas|con)?\s*(\d{1,3}|media|una|un|dos|cinco|diez|quince|veinte|treinta)\s*(minutos?|horas?|hora)?\s*(?:antes|de anticipacion)\b/);
@@ -346,17 +365,21 @@ function interpretarAlarma(textoOriginal, categorias) {
     borrarTramo(t, ma.index, ma.index + ma[0].length);
   }
 
-  // 2) Hora: "a las 2 de la tarde", "a las 8:30"
-  const mh = t.bajo.match(/\ba las (\d{1,2})(?::(\d{2})| y media)?(?:\s+(?:de la|en la|de|por la)\s+(manana|tarde|noche))?\b/);
-  if (mh) {
+  // 2) Horas: "a las 8 de la mañana, a la 1 y a las 7 de la noche"
+  const reHora = /\b(?:y\s+)?a las? (\d{1,2})(?::(\d{2})| y media)?(?:\s+(?:de la|en la|de|por la)\s+(manana|tarde|noche))?\b/g;
+  const horas = [];
+  for (const mh of [...t.bajo.matchAll(reHora)]) {
     let h = Number(mh[1]);
     const min = mh[2] || (mh[0].includes('y media') ? '30' : '00');
     if ((mh[3] === 'tarde' || mh[3] === 'noche') && h < 12) h += 12;
     // "a las 3" sin decir mañana/tarde: entre 1 y 6 casi siempre es de la tarde
     if (!mh[3] && h >= 1 && h <= 6) h += 12;
-    r.hora = `${String(h).padStart(2, '0')}:${min}`;
+    horas.push(`${String(h).padStart(2, '0')}:${min}`);
     borrarTramo(t, mh.index, mh.index + mh[0].length);
   }
+  if (horas.length) { r.hora = horas[0]; r.horasExtra = horas.slice(1); }
+  // Si se repite y no dijiste "X minutos antes", avisa a la hora exacta (ej. medicamentos)
+  if (!ma && r.repetirDias.length) r.avisarMin = 0;
 
   // 3) Día: "hoy", "mañana", "pasado mañana", "el viernes", "el 15 de noviembre"
   const md = t.bajo.match(new RegExp(`\\b(?:para\\s+)?(?:el\\s+)?(hoy|pasado manana|manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo|\\d{1,2}\\s+de\\s+(?:${MESES_SIN_TILDE}))\\b`));
@@ -379,7 +402,7 @@ function interpretarAlarma(textoOriginal, categorias) {
   // 6) Lo que queda es el título
   let titulo = limpiar(t.original)
     .replace(/^(?:[,.:]\s*)?(?:que diga|que dice|dice|para|de)\s*[,:]?\s*/i, '')
-    .replace(/\s+(?:y|,)\s*$/i, '');
-  r.titulo = mayuscula(limpiar(titulo));
+    .replace(/(?:\s*(?:,|\by\b))+\s*$/i, '');
+  r.titulo = mayuscula(limpiar(titulo).replace(/(?:\s*(?:,|\by\b))+$/i, ''));
   return r;
 }

@@ -185,7 +185,8 @@ function htmlTarea(t) {
   if (t.fecha_limite) meta.push(`<span class="${vencida ? 'vencida' : ''}">${etiquetaFecha(t.fecha_limite)}${!t.hecha ? ` (${cuentaRegresiva(t.fecha_limite).toLowerCase()})` : ''}</span>`);
   if (esRutina(t)) meta.push(`<span>↻ ${textoDias(t.repetir_dias)}${t.hora ? ` a las ${horaBonita(t.hora)}` : ''}</span>`);
   else if (t.hora) meta.push(`<span>${horaBonita(t.hora)}</span>`);
-  if (t.recordar_cada && !t.hecha) meta.push(`<span>↻ ${t.recordar_cada === 1 ? 'Te recuerdo a diario' : `Te recuerdo cada ${t.recordar_cada} días`}</span>`);
+  if (t.recordar_cada_horas && !t.hecha) meta.push(`<span>🔔 ${t.recordar_cada_horas === 1 ? 'Te recuerdo cada hora' : `Te recuerdo cada ${t.recordar_cada_horas} horas`}</span>`);
+  else if (t.recordar_cada && !t.hecha) meta.push(`<span>🔔 ${t.recordar_cada === 1 ? 'Te recuerdo a diario' : `Te recuerdo cada ${t.recordar_cada} días`}</span>`);
   if (t.prioridad === 'alta' && !t.hecha) meta.push('<span class="prioridad-alta">Prioridad alta</span>');
   if (subs.length) meta.push(`<span>${hechas} de ${subs.length} pasos</span>`);
 
@@ -216,6 +217,17 @@ function htmlTarea(t) {
 function htmlLista(lista) { return ordenar(lista).map(htmlTarea).join(''); }
 
 // ---------- Alarmas ----------
+function horasDe(a) {
+  return [a.hora, ...(a.horas_extra || [])].filter(Boolean).map((h) => h.slice(0, 5)).sort();
+}
+function alarmaRepite(a) { return Array.isArray(a.repetir_dias) && a.repetir_dias.length > 0; }
+// ¿Suena este día?
+function alarmaToca(a, fechaISO) {
+  if (alarmaRepite(a)) return a.fecha <= fechaISO && a.repetir_dias.includes(desdeISO(fechaISO).getDay());
+  return a.fecha === fechaISO;
+}
+function alarmasDelDia(fechaISO) { return alarmasFiltradas().filter((a) => alarmaToca(a, fechaISO)); }
+
 function alarmasFiltradas() {
   const cat = categoriaActual();
   return cat ? estado.alarmas.filter((a) => a.categoria_id === cat) : estado.alarmas;
@@ -227,8 +239,10 @@ function textoAviso(min) {
   return `Te aviso ${min} min antes`;
 }
 function alarmaPasada(a) {
+  if (alarmaRepite(a)) return false;
   const ahora = new Date();
-  const [h, m] = a.hora.slice(0, 5).split(':').map(Number);
+  const ultima = horasDe(a).slice(-1)[0];
+  const [h, m] = ultima.split(':').map(Number);
   const f = desdeISO(a.fecha);
   f.setHours(h, m, 0, 0);
   return f < ahora;
@@ -238,19 +252,20 @@ function htmlAlarma(a) {
   const pasada = alarmaPasada(a);
   return `
     <article class="alarma ${pasada ? 'pasada' : ''}" style="--color-cat:${cat?.color || '#8A93AB'}" data-accion="editar-alarma" data-id="${a.id}">
-      <div class="alarma-hora">${horaBonita(a.hora)}</div>
+      <div class="alarma-hora">${horasDe(a).map(horaBonita).join('<br>')}</div>
       <div class="alarma-cuerpo">
         <div class="tarea-titulo">${esc(a.titulo)}</div>
         <div class="tarea-meta">
           ${cat && !categoriaActual() ? `<span class="etiqueta-cat">${esc(cat.nombre)}</span>` : ''}
-          ${a.fecha !== hoyISO() ? `<span>${etiquetaFecha(a.fecha)}</span>` : ''}
+          ${alarmaRepite(a) ? `<span>↻ ${textoDias(a.repetir_dias)}</span>` : a.fecha !== hoyISO() ? `<span>${etiquetaFecha(a.fecha)}</span>` : ''}
           <span>${pasada ? 'Ya pasó' : '⏰ ' + textoAviso(a.avisar_min_antes)}</span>
         </div>
       </div>
     </article>`;
 }
 function htmlAlarmas(lista) {
-  return [...lista].sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? -1 : 1)).map(htmlAlarma).join('');
+  const clave = (a) => (alarmaRepite(a) ? '' : a.fecha) + horasDe(a)[0];
+  return [...lista].sort((a, b) => (clave(a) < clave(b) ? -1 : 1)).map(htmlAlarma).join('');
 }
 
 function htmlVacio(texto, boton = true) {
@@ -276,10 +291,11 @@ function vistaHoy() {
   const deHoy = sinRutinas(lista).filter((t) => t.fecha_limite === hoy);
   const vencidas = sinRutinas(lista).filter((t) => !t.hecha && t.fecha_limite && t.fecha_limite < hoy);
   const yaListadas = new Set([...deHoy, ...vencidas].map((t) => t.id));
-  const recordatorios = lista.filter((t) => !yaListadas.has(t.id) && tocaInsistir(t, hoy));
+  const recordatorios = lista.filter((t) => !yaListadas.has(t.id) && !t.hecha &&
+    (tocaInsistir(t, hoy) || t.recordar_cada_horas > 0));
   const rutinas = lista.filter((t) => rutinaToca(t, hoy));
 
-  const alarmasHoy = alarmasFiltradas().filter((a) => a.fecha === hoy);
+  const alarmasHoy = alarmasDelDia(hoy);
 
   let html = htmlProgreso([...deHoy, ...rutinas], 'hechas hoy');
   html += `<h2 class="titulo-seccion">Alarmas de hoy <button class="btn suave chico" data-accion="nueva-alarma">+ Alarma</button></h2>`;
@@ -306,7 +322,7 @@ function vistaSemana() {
     const rutinasDia = lista.filter((t) => rutinaToca(t, dia));
     html += `<h2 class="titulo-seccion">${etiquetaFecha(dia)} <small>${delDia.length ? `${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : 'Libre'}</small></h2>`;
     if (rutinasDia.length) html += `<p class="rutinas-dia">Rutinas: ${rutinasDia.map((t) => esc(t.titulo)).join(', ')}</p>`;
-    html += htmlAlarmas(alarmasFiltradas().filter((a) => a.fecha === dia));
+    html += htmlAlarmas(alarmasDelDia(dia));
     html += htmlLista(delDia);
   }
   return html;
@@ -323,7 +339,7 @@ function vistaCalendario() {
     tareas: lista,
     colorDe
   }) + `<h2 class="titulo-seccion">${etiquetaFecha(estado.diaSeleccionado)} <small>${delDia.length} tarea${delDia.length === 1 ? '' : 's'}</small></h2>`
-    + htmlAlarmas(alarmasFiltradas().filter((a) => a.fecha === estado.diaSeleccionado))
+    + htmlAlarmas(alarmasDelDia(estado.diaSeleccionado))
     + (delDia.length ? htmlLista(delDia) : htmlVacio('Nada este día.'));
 }
 
@@ -622,7 +638,8 @@ function abrirTarea(tarea, prellenado = {}, transcripcion = '') {
   $('#tHora').value = datos.hora ? datos.hora.slice(0, 5) : '';
   $('#tPrioridad').value = datos.prioridad || 'media';
   $('#tRecordar').value = String(datos.recordar_dias_antes ?? 2);
-  $('#tRecordarCada').value = String(datos.recordar_cada ?? 0);
+  $('#tRecordarCada').value = datos.recordar_cada_horas ? `h${datos.recordar_cada_horas}` : String(datos.recordar_cada ?? 0);
+  if (!$('#tRecordarCada').value) $('#tRecordarCada').value = '0';
   marcarDias(datos.repetir_dias || []);
   $('#tNotas').value = datos.notas || '';
 
@@ -642,7 +659,7 @@ function marcarDias(dias) {
 function diasElegidos() {
   return [...document.querySelectorAll('#tDias input:checked')].map((c) => Number(c.value));
 }
-document.querySelectorAll('.atajos-dias button').forEach((b) =>
+document.querySelectorAll('.atajos-dias:not(#aAtajos) button').forEach((b) =>
   b.addEventListener('click', () => marcarDias(b.dataset.dias ? b.dataset.dias.split(',').map(Number) : [])));
 
 $('#btnAgregarSub').addEventListener('click', () => {
@@ -660,7 +677,8 @@ $('#formTarea').addEventListener('submit', async (e) => {
     hora: $('#tHora').value || null,
     prioridad: $('#tPrioridad').value,
     recordar_dias_antes: Number($('#tRecordar').value),
-    recordar_cada: Number($('#tRecordarCada').value),
+    recordar_cada: $('#tRecordarCada').value.startsWith('h') ? 0 : Number($('#tRecordarCada').value),
+    recordar_cada_horas: $('#tRecordarCada').value.startsWith('h') ? Number($('#tRecordarCada').value.slice(1)) : 0,
     repetir_dias: diasElegidos(),
     notas: $('#tNotas').value.trim() || null
   };
@@ -846,7 +864,8 @@ async function procesarVoz(texto) {
     const r = interpretarAlarma(texto, estado.categorias);
     abrirAlarma(null, {
       titulo: r.titulo, categoria_id: r.categoriaId || categoriaActual(),
-      fecha: r.fecha, hora: r.hora, avisar_min_antes: r.avisarMin
+      fecha: r.fecha, hora: r.hora, horas_extra: r.horasExtra,
+      repetir_dias: r.repetirDias, avisar_min_antes: r.avisarMin
     }, texto);
     return;
   }
@@ -881,6 +900,8 @@ async function procesarVoz(texto) {
     fecha_limite: r.fecha,
     hora: r.hora,
     repetir_dias: r.repetirDias,
+    recordar_cada: r.cadaDias,
+    recordar_cada_horas: r.cadaHoras,
     subtareas: r.subtareas
   }, texto);
 }
@@ -890,6 +911,25 @@ async function procesarVoz(texto) {
 // ============================================================
 const dlgAlarma = $('#dlgAlarma');
 let alarmaEditando = null;
+
+function filaHora(valor = '') {
+  const div = document.createElement('div');
+  div.className = 'sub-fila';
+  div.style.marginTop = '8px';
+  div.innerHTML = `<input type="time" value="${esc(valor)}" aria-label="Otra hora"><button type="button" aria-label="Quitar hora">×</button>`;
+  div.querySelector('button').addEventListener('click', () => div.remove());
+  return div;
+}
+$('#btnAgregarHora').addEventListener('click', () => {
+  const f = filaHora();
+  $('#aHorasExtra').appendChild(f);
+  f.querySelector('input').focus();
+});
+function marcarDiasAlarma(dias) {
+  document.querySelectorAll('#aDias input').forEach((c) => { c.checked = dias.includes(Number(c.value)); });
+}
+document.querySelectorAll('#aAtajos button').forEach((b) =>
+  b.addEventListener('click', () => marcarDiasAlarma(b.dataset.dias ? b.dataset.dias.split(',').map(Number) : [])));
 
 function abrirAlarma(alarma, prellenado = {}, transcripcion = '') {
   if (!estado.categorias.length) { toast('Primero crea una categoría.'); abrirCategoria(null); return; }
@@ -903,6 +943,9 @@ function abrirAlarma(alarma, prellenado = {}, transcripcion = '') {
   $('#aTitulo').value = d.titulo || '';
   $('#aFecha').value = d.fecha || hoyISO();
   $('#aHora').value = d.hora ? d.hora.slice(0, 5) : '';
+  $('#aHorasExtra').innerHTML = '';
+  (d.horas_extra || []).forEach((h) => $('#aHorasExtra').appendChild(filaHora(h.slice(0, 5))));
+  marcarDiasAlarma(d.repetir_dias || []);
   const opcion = String(d.avisar_min_antes ?? 10);
   if (![...$('#aAvisar').options].some((o) => o.value === opcion)) {
     $('#aAvisar').insertAdjacentHTML('beforeend', `<option value="${opcion}">${opcion} minutos antes</option>`);
@@ -920,6 +963,8 @@ $('#formAlarma').addEventListener('submit', async (e) => {
     fecha: $('#aFecha').value,
     hora: $('#aHora').value,
     avisar_min_antes: Number($('#aAvisar').value),
+    horas_extra: [...$('#aHorasExtra').querySelectorAll('input')].map((i) => i.value).filter(Boolean),
+    repetir_dias: [...document.querySelectorAll('#aDias input:checked')].map((c) => Number(c.value)),
     avisada: false // si la cambias, vuelve a avisar
   };
   if (!datos.titulo || !datos.fecha || !datos.hora) return;

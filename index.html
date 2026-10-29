@@ -141,6 +141,10 @@
       <label>Insistirme hasta que la marque como hecha
         <select id="tRecordarCada">
           <option value="0">No</option>
+          <option value="h1">Cada hora</option>
+          <option value="h2">Cada 2 horas</option>
+          <option value="h3">Cada 3 horas</option>
+          <option value="h4">Cada 4 horas</option>
           <option value="1">Todos los días</option>
           <option value="2">Cada 2 días</option>
           <option value="3">Cada 3 días</option>
@@ -198,14 +202,33 @@
       <label>Categoría
         <select id="aCategoria" required></select>
       </label>
-      <div class="dos-columnas">
-        <label>Día
-          <input type="date" id="aFecha" required>
-        </label>
-        <label>Hora
-          <input type="time" id="aHora" required>
-        </label>
-      </div>
+      <label>Día (o desde qué día, si se repite)
+        <input type="date" id="aFecha" required>
+      </label>
+      <fieldset class="subtareas-editor">
+        <legend>Horas</legend>
+        <div class="sub-fila"><input type="time" id="aHora" required aria-label="Hora principal"></div>
+        <div id="aHorasExtra"></div>
+        <button type="button" class="btn suave" id="btnAgregarHora" style="margin-top:8px">+ Otra hora</button>
+      </fieldset>
+      <fieldset class="repetir">
+        <legend>Repetir</legend>
+        <div class="dias" id="aDias">
+          <label><input type="checkbox" value="1"><span>L</span></label>
+          <label><input type="checkbox" value="2"><span>M</span></label>
+          <label><input type="checkbox" value="3"><span>Mi</span></label>
+          <label><input type="checkbox" value="4"><span>J</span></label>
+          <label><input type="checkbox" value="5"><span>V</span></label>
+          <label><input type="checkbox" value="6"><span>S</span></label>
+          <label><input type="checkbox" value="0"><span>D</span></label>
+        </div>
+        <div class="atajos-dias" id="aAtajos">
+          <button type="button" data-dias="0,1,2,3,4,5,6">Todos los días</button>
+          <button type="button" data-dias="1,2,3,4,5,6">Lunes a sábado</button>
+          <button type="button" data-dias="1,2,3,4,5">Lunes a viernes</button>
+          <button type="button" data-dias="">Solo ese día</button>
+        </div>
+      </fieldset>
       <label>Avisarme
         <select id="aAvisar">
           <option value="0">A la hora exacta</option>
@@ -265,7 +288,7 @@
       <button type="button" class="btn rosa" id="btnListoVoz">Listo</button>
     </div>
     <button type="button" class="enlace" id="btnEscribirEnVez">Prefiero escribirlo</button>
-    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"<br><br>Alarma: "Nueva alarma en Trabajo, reunión con mi jefe a las 2 de la tarde, avísame 10 minutos antes"</p>
+    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"<br><br>Alarma: "Nueva alarma en Trabajo, reunión con mi jefe a las 2 de la tarde, avísame 10 minutos antes"<br><br>Varias horas: "Nueva alarma, tomar medicamentos todos los días a las 8 de la mañana, a la 1 y a las 7 de la noche"</p>
   </div>
 
   <!-- ============ DIÁLOGO: ESCRIBIR COMO SI HABLARAS ============ -->

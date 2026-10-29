@@ -2,8 +2,8 @@
 -- PASO 2: PROGRAMAR LOS AVISOS (para notificaciones con la app cerrada)
 --
 -- La función "recordatorios" se ejecuta cada 5 minutos y decide qué mandar:
---   - 7:00 a. m.: el resumen del día (hoy, atrasadas, lo que se acerca, rutinas)
---   - a la hora exacta de cada rutina (ej. inglés a las 7:00 p. m. de lunes a sábado)
+--   - 8:30 a. m.: el resumen del día (hoy, atrasadas, lo que se acerca, rutinas)
+--   - a la hora exacta de cada rutina (ej. inglés a las 8:30 p. m. de lunes a sábado)
 --   - a la hora de las tareas que vencen hoy y tienen hora
 --   - las alarmas, X minutos antes
 --

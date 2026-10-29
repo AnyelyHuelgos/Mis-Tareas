@@ -26,11 +26,13 @@ mis-tareas/
 ├── icons/                → Íconos de la app
 └── supabase/
     ├── 01_tablas.sql                → Crea las tablas y la seguridad
-    ├── 02_recordatorio_diario.sql   → Programa el aviso de las 7 a. m. (y trae la prueba)
+    ├── 02_recordatorio_diario.sql   → Programa el aviso de las 8:30 a. m. (y trae la prueba)
     ├── 03_ideas_y_recordatorios.sql → Lluvia de ideas y "recuérdame cada X días"
     ├── 04_rutinas.sql               → Rutinas que se repiten ciertos días
     ├── 05_alarmas.sql               → Alarmas con aviso X minutos antes
-    └── functions/recordatorios/     → Función que envía las notificaciones
+    ├── 06_horas_y_alarmas_repetidas.sql → Insistir cada X horas y alarmas con varias horas
+    ├── functions/recordatorios/     → Función que envía las notificaciones
+    └── functions/calendario/        → Calendario para suscribirte desde el iPhone
 ```
 
 ---
@@ -38,7 +40,7 @@ mis-tareas/
 ## Paso 1. Crear la base de datos (Supabase)
 
 1. Entra a supabase.com, crea una cuenta gratis y un **proyecto nuevo**.
-2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql`, `supabase/04_rutinas.sql` y `supabase/05_alarmas.sql`.
+2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql`, `supabase/04_rutinas.sql`, `supabase/05_alarmas.sql` y `supabase/06_horas_y_alarmas_repetidas.sql`.
 3. Ve a **Authentication → Users → Add user → Create new user**. Pon tu correo y una contraseña. Marca **Auto Confirm User**.
 4. Ve a **Authentication → Sign In / Providers** y desactiva **Allow new users to sign up**. Así nadie más puede crear cuenta.
 
@@ -79,6 +81,26 @@ Al entrar, deja marcado **Recordarme en este celular** y no tendrás que volver 
 
 ---
 
+## Paso 6 (iPhone). Avisos con el Calendario del iPhone ✅ el más confiable
+
+La app Calendario del iPhone se suscribe a un calendario con tus alarmas, rutinas y tareas con fecha, y te da las alertas por su cuenta. No depende de notificaciones de internet.
+
+1. Supabase → **Edge Functions → Secrets**: agrega `CALENDARIO_TOKEN` con una clave inventada, ej. `cal-k8f2m9x4q7`.
+2. **Edge Functions → Deploy a new function → Via Editor**. Nombre: `calendario`. Pega `supabase/functions/calendario/index.ts` → **Deploy**.
+3. En la función → **Settings** → apaga **Verify JWT** → guarda.
+4. Prueba el enlace en el navegador (debe descargar o mostrar un texto que empieza con `BEGIN:VCALENDAR`):
+   `https://TU-PROYECTO.supabase.co/functions/v1/calendario?token=TU-CALENDARIO-TOKEN`
+5. En el iPhone: **Ajustes → Apps → Calendario → Cuentas de calendario → Agregar cuenta → Otra → Agregar calendario suscrito**. Pega el enlace → Siguiente.
+6. **Apaga "Quitar alertas"** (si queda prendido, no te avisa) → Guardar.
+7. Para que se actualice seguido: en **Cuentas de calendario → Obtener datos**, elige la opción más frecuente (por ejemplo, cada 15 minutos).
+
+Qué aparece en el Calendario:
+- **⏰ Alarmas**, con su aviso X minutos antes.
+- **↻ Rutinas**, repetidas los días que elegiste, con aviso a su hora.
+- **📌 Tareas con fecha**, con aviso ese día a las 8:30 a. m. (o a su hora si tiene) y X días antes si configuraste "Avisarme".
+
+Las tareas que marcas como hechas desaparecen del calendario en la siguiente actualización. Lo que crees para dentro de muy pocos minutos puede no alcanzar a llegar, porque el iPhone actualiza el calendario cada cierto tiempo.
+
 ## Paso 6A. Avisos con la app ntfy (recomendado para iPhone)
 
 Las notificaciones web en iPhone fallan seguido. ntfy es una app gratis que sí entrega bien los avisos, con sonido y en la pantalla bloqueada.
@@ -94,7 +116,7 @@ Las alarmas llegan con prioridad urgente; las rutinas y tareas con hora, con pri
 ## Paso 6. Notificaciones con la app cerrada
 
 Sin este paso, solo ves el resumen **cuando abres la app**. Con este paso te llegan:
-- el resumen todos los días a las **7:00 a. m.**,
+- el resumen todos los días a las **8:30 a. m.**,
 - cada rutina **a su hora** (solo los días que elegiste),
 - cada tarea de hoy que tenga hora.
 

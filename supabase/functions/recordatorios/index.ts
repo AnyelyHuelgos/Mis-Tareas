@@ -7,14 +7,16 @@
 //   - notificaciones web (Web Push) a los celulares registrados con la campana
 //
 // Qué manda:
-//   1. A las 7:00 a. m. (hora Colombia): resumen del día
+//   1. A las 8:30 a. m. (hora Colombia, cámbiala con el secreto HORA_RESUMEN): resumen del día
 //      - lo de hoy y lo atrasado
 //      - lo que vence en X días (campo "Avisarme")
 //      - lo que toca insistir (campo "Insistirme cada X días")
 //      - las rutinas de hoy
 //   2. A la hora de cada rutina, si hoy le toca y no la has marcado
 //   3. A la hora de cada tarea que vence hoy, si no la has marcado
-//   4. Las ALARMAS, X minutos antes (ej. reunión a las 2 p. m., aviso a la 1:50)
+//   4. Las ALARMAS, X minutos antes (ej. reunión a las 2 p. m., aviso a la 1:50),
+//      con varias horas y repetición (ej. medicamentos 8 a. m., 1 p. m. y 7 p. m. todos los días)
+//   5. "Insistirme cada X horas" entre la hora del resumen y HORA_FIN, hasta marcarla
 //
 // Prueba: llamarla con {"prueba": true} manda un aviso de prueba ya mismo.
 // ============================================================
@@ -32,16 +34,18 @@ webpush.setVapidDetails(
   Deno.env.get("VAPID_PRIVATE_KEY")!,
 );
 
-const HORA_RESUMEN = Deno.env.get("HORA_RESUMEN") ?? "07:00"; // puedes cambiarla en Secrets
+const HORA_RESUMEN = Deno.env.get("HORA_RESUMEN") ?? "08:30"; // puedes cambiarla en Secrets
+const HORA_FIN = Deno.env.get("HORA_FIN") ?? "21:00";         // hasta qué hora insistir cada X horas
 const MINUTOS_VENTANA = 5; // cada cuánto corre pg_cron
 const NTFY_TOPIC = Deno.env.get("NTFY_TOPIC");
+let ultimoNtfy = "sin intentar"; // para el diagnóstico de la prueba
 const NTFY_SERVIDOR = Deno.env.get("NTFY_SERVIDOR") ?? "https://ntfy.sh";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://tareas-anyely.netlify.app";
 
 type Tarea = {
   id: string; user_id: string; titulo: string;
   fecha_limite: string | null; hora: string | null;
-  recordar_dias_antes: number; recordar_cada: number;
+  recordar_dias_antes: number; recordar_cada: number; recordar_cada_horas: number;
   repetir_dias: number[]; ultima_completada: string | null; creado_en: string;
 };
 
@@ -105,8 +109,10 @@ async function enviarNtfy(titulo: string, cuerpo: string, prioridad = 3, etiquet
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic: NTFY_TOPIC, title: titulo, message: cuerpo, priority: prioridad, tags: etiquetas, click: APP_URL }),
     });
+    ultimoNtfy = `${r.status} ${await r.text()}`.slice(0, 300);
     return r.ok ? 1 : 0;
-  } catch (_) {
+  } catch (e) {
+    ultimoNtfy = "error: " + String(e);
     return 0;
   }
 }
@@ -149,7 +155,10 @@ Deno.serve(async (req) => {
       enviadas += await enviar(u, "Notificación de prueba",
         "¡Funciona! Así te llegarán tus recordatorios.", "prueba-" + Date.now(), 4, ["tada"]);
     }
-    return Response.json({ ok: true, prueba: true, enviadas });
+    return Response.json({
+      ok: true, prueba: true, enviadas,
+      usuarios: usuarios.length, ntfyConfigurado: Boolean(NTFY_TOPIC), ntfy: ultimoNtfy,
+    });
   }
 
   const ahora = ahoraColombia();
@@ -160,7 +169,7 @@ Deno.serve(async (req) => {
 
   const { data, error } = await supabase
     .from("tareas")
-    .select("id, user_id, titulo, fecha_limite, hora, recordar_dias_antes, recordar_cada, repetir_dias, ultima_completada, creado_en")
+    .select("id, user_id, titulo, fecha_limite, hora, recordar_dias_antes, recordar_cada, recordar_cada_horas, repetir_dias, ultima_completada, creado_en")
     .eq("hecha", false);
   if (error) return new Response(error.message, { status: 500 });
 
@@ -173,10 +182,9 @@ Deno.serve(async (req) => {
   // Alarmas de hoy y mañana que aún no se han avisado
   const { data: alarmas } = await supabase
     .from("alarmas")
-    .select("id, user_id, titulo, fecha, hora, avisar_min_antes")
-    .eq("avisada", false)
-    .gte("fecha", hoy)
-    .lte("fecha", fechaColombia(2));
+    .select("id, user_id, titulo, fecha, hora, horas_extra, repetir_dias, avisar_min_antes");
+  const inicioVentana = Math.floor(minutoActual / MINUTOS_VENTANA) * MINUTOS_VENTANA;
+  const base = aMinutos(HORA_RESUMEN);
 
   let enviadas = 0;
   for (const userId of usuarios) {
@@ -191,7 +199,7 @@ Deno.serve(async (req) => {
       const pronto = normales.filter((t) => t.fecha_limite && diasEntre(hoy, t.fecha_limite) > 0 &&
         diasEntre(hoy, t.fecha_limite) === t.recordar_dias_antes);
       const yaVan = new Set([...deHoy, ...atrasadas, ...pronto].map((t) => t.id));
-      const insistir = normales.filter((t) => !yaVan.has(t.id) && tocaInsistir(t, hoy));
+      const insistir = normales.filter((t) => !yaVan.has(t.id) && (tocaInsistir(t, hoy) || t.recordar_cada_horas > 0));
 
       const partes: string[] = [];
       if (deHoy.length) partes.push(`Hoy: ${lista(deHoy)}`);
@@ -224,18 +232,39 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4) Alarmas: avisar X minutos antes. Si una vuelta se saltó, avisa en la
-    //    siguiente (hasta 30 min tarde), y la marca para no repetirla.
-    const ahoraMs = Date.now() - 5 * 3600 * 1000; // "reloj" de Colombia en UTC
+    // 4) Alarmas: cada hora de la alarma, X minutos antes.
+    //    Revisamos hoy y mañana (por si el aviso es de 1 día antes).
     for (const a of (alarmas ?? []).filter((x) => x.user_id === userId)) {
-      const momento = Date.parse(`${a.fecha}T${a.hora.slice(0, 5)}:00Z`); // hora Colombia tratada como UTC
-      const aviso = momento - a.avisar_min_antes * 60000;
-      if (ahoraMs >= aviso && ahoraMs - aviso < 30 * 60000) {
-        const faltan = Math.round((momento - ahoraMs) / 60000);
-        const cuando = faltan > 1 ? `En ${faltan} minutos` : "Ahora";
-        enviadas += await enviar(userId, `⏰ ${a.titulo}`,
-          `${cuando}, a las ${horaBonita(a.hora)}.`, `alarma-${a.id}`, 5, ["alarm_clock"]);
-        await supabase.from("alarmas").update({ avisada: true }).eq("id", a.id);
+      const dias: number[] = Array.isArray(a.repetir_dias) ? a.repetir_dias : [];
+      const horas: string[] = [a.hora, ...(a.horas_extra ?? [])].filter(Boolean);
+      for (const sumar of [0, 1, 2]) {
+        const fecha = fechaColombia(sumar);
+        const diaSem = new Date(Date.parse(fecha + "T12:00:00Z")).getUTCDay();
+        const toca = dias.length ? (a.fecha <= fecha && dias.includes(diaSem)) : a.fecha === fecha;
+        if (!toca) continue;
+        for (const h of horas) {
+          // minuto del aviso contado desde hoy a medianoche (puede ser de mañana)
+          const aviso = sumar * 1440 + aMinutos(h) - (a.avisar_min_antes ?? 0);
+          if (aviso >= inicioVentana && aviso < inicioVentana + MINUTOS_VENTANA) {
+            const cuando = a.avisar_min_antes
+              ? (a.avisar_min_antes >= 1440 ? "Mañana" : `En ${a.avisar_min_antes} minutos`)
+              : "Ahora";
+            enviadas += await enviar(userId, `⏰ ${a.titulo}`,
+              `${cuando}, a las ${horaBonita(h)}.`, `alarma-${a.id}-${fecha}-${h}`, 5, ["alarm_clock"]);
+          }
+        }
+      }
+    }
+
+    // 5) Insistir cada X horas, desde la hora del resumen hasta HORA_FIN
+    if (inicioVentana > base && inicioVentana <= aMinutos(HORA_FIN)) {
+      for (const t of normales) {
+        const cada = t.recordar_cada_horas || 0;
+        if (cada && (inicioVentana - base) % (cada * 60) === 0) {
+          const extra = t.fecha_limite ? ` (${cuentaRegresiva(t.fecha_limite, hoy)}${t.hora ? `, ${horaBonita(t.hora)}` : ""})` : "";
+          enviadas += await enviar(userId, `🔔 No te olvides: ${t.titulo}`,
+            `Sigue pendiente${extra}. Márcala cuando la termines.`, `insistir-${t.id}-${inicioVentana}`, 4, ["bell"]);
+        }
       }
     }
   }
