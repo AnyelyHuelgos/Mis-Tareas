@@ -38,6 +38,9 @@ const HORA_RESUMEN = Deno.env.get("HORA_RESUMEN") ?? "08:30"; // puedes cambiarl
 const HORA_FIN = Deno.env.get("HORA_FIN") ?? "21:00";         // hasta qué hora insistir cada X horas
 const MINUTOS_VENTANA = 5; // cada cuánto corre pg_cron
 const NTFY_TOPIC = Deno.env.get("NTFY_TOPIC");
+// Token de tu cuenta gratis de ntfy.sh: así el límite diario es solo tuyo
+// y no se comparte con otros usuarios de Supabase.
+const NTFY_TOKEN = Deno.env.get("NTFY_TOKEN");
 let ultimoNtfy = "sin intentar"; // para el diagnóstico de la prueba
 const NTFY_SERVIDOR = Deno.env.get("NTFY_SERVIDOR") ?? "https://ntfy.sh";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://tareas-anyely.netlify.app";
@@ -106,7 +109,10 @@ async function enviarNtfy(titulo: string, cuerpo: string, prioridad = 3, etiquet
   try {
     const r = await fetch(NTFY_SERVIDOR, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(NTFY_TOKEN ? { Authorization: `Bearer ${NTFY_TOKEN}` } : {}),
+      },
       body: JSON.stringify({ topic: NTFY_TOPIC, title: titulo, message: cuerpo, priority: prioridad, tags: etiquetas, click: APP_URL }),
     });
     ultimoNtfy = `${r.status} ${await r.text()}`.slice(0, 300);
