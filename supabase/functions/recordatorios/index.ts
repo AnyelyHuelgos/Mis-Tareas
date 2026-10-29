@@ -1,6 +1,10 @@
 // ============================================================
 // EDGE FUNCTION: recordatorios
-// Corre en los servidores de Supabase (gratis). pg_cron la llama cada 15 minutos.
+// Corre en los servidores de Supabase (gratis). pg_cron la llama cada 5 minutos.
+//
+// Por dónde manda los avisos:
+//   - ntfy (app gratis para iPhone y Android) si configuras el secreto NTFY_TOPIC
+//   - notificaciones web (Web Push) a los celulares registrados con la campana
 //
 // Qué manda:
 //   1. A las 7:00 a. m. (hora Colombia): resumen del día
@@ -10,6 +14,7 @@
 //      - las rutinas de hoy
 //   2. A la hora de cada rutina, si hoy le toca y no la has marcado
 //   3. A la hora de cada tarea que vence hoy, si no la has marcado
+//   4. Las ALARMAS, X minutos antes (ej. reunión a las 2 p. m., aviso a la 1:50)
 //
 // Prueba: llamarla con {"prueba": true} manda un aviso de prueba ya mismo.
 // ============================================================
@@ -28,7 +33,10 @@ webpush.setVapidDetails(
 );
 
 const HORA_RESUMEN = Deno.env.get("HORA_RESUMEN") ?? "07:00"; // puedes cambiarla en Secrets
-const MINUTOS_VENTANA = 15; // cada cuánto corre pg_cron
+const MINUTOS_VENTANA = 5; // cada cuánto corre pg_cron
+const NTFY_TOPIC = Deno.env.get("NTFY_TOPIC");
+const NTFY_SERVIDOR = Deno.env.get("NTFY_SERVIDOR") ?? "https://ntfy.sh";
+const APP_URL = Deno.env.get("APP_URL") ?? "https://tareas-anyely.netlify.app";
 
 type Tarea = {
   id: string; user_id: string; titulo: string;
@@ -87,11 +95,27 @@ function lista(tareas: Tarea[], max = 3): string {
   return tareas.length > max ? `${nombres} y ${tareas.length - max} más` : nombres;
 }
 
+// ---------- ntfy: app gratis que sí funciona bien en iPhone ----------
+// prioridad: 3 normal, 4 alta, 5 urgente (vibra más fuerte)
+async function enviarNtfy(titulo: string, cuerpo: string, prioridad = 3, etiquetas: string[] = []): Promise<number> {
+  if (!NTFY_TOPIC) return 0;
+  try {
+    const r = await fetch(NTFY_SERVIDOR, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: NTFY_TOPIC, title: titulo, message: cuerpo, priority: prioridad, tags: etiquetas, click: APP_URL }),
+    });
+    return r.ok ? 1 : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
 // ---------- Enviar a todos los celulares del usuario ----------
-async function enviar(userId: string, titulo: string, cuerpo: string, tag: string): Promise<number> {
+async function enviar(userId: string, titulo: string, cuerpo: string, tag: string, prioridad = 3, etiquetas: string[] = []): Promise<number> {
+  let enviadas = await enviarNtfy(titulo, cuerpo, prioridad, etiquetas);
   const { data: subs } = await supabase
     .from("push_suscripciones").select("id, suscripcion").eq("user_id", userId);
-  let enviadas = 0;
   for (const s of subs ?? []) {
     try {
       await webpush.sendNotification(s.suscripcion, JSON.stringify({ titulo, cuerpo, tag }), { TTL: 86400, urgency: "high" });
@@ -114,14 +138,16 @@ Deno.serve(async (req) => {
   }
   const cuerpo = await req.json().catch(() => ({}));
 
+  // Todos los usuarios de la app (los que tienen categorías)
+  const { data: cats } = await supabase.from("categorias").select("user_id");
+  const usuarios = [...new Set((cats ?? []).map((c) => c.user_id))];
+
   // ---------- Modo prueba ----------
   if (cuerpo.prueba) {
-    const { data: subs } = await supabase.from("push_suscripciones").select("user_id");
-    const usuarios = [...new Set((subs ?? []).map((s) => s.user_id))];
     let enviadas = 0;
     for (const u of usuarios) {
       enviadas += await enviar(u, "Notificación de prueba",
-        "¡Funciona! Así te llegarán tus recordatorios.", "prueba-" + Date.now());
+        "¡Funciona! Así te llegarán tus recordatorios.", "prueba-" + Date.now(), 4, ["tada"]);
     }
     return Response.json({ ok: true, prueba: true, enviadas });
   }
@@ -144,8 +170,17 @@ Deno.serve(async (req) => {
     porUsuario.set(t.user_id, [...(porUsuario.get(t.user_id) ?? []), t]);
   }
 
+  // Alarmas de hoy y mañana que aún no se han avisado
+  const { data: alarmas } = await supabase
+    .from("alarmas")
+    .select("id, user_id, titulo, fecha, hora, avisar_min_antes")
+    .eq("avisada", false)
+    .gte("fecha", hoy)
+    .lte("fecha", fechaColombia(2));
+
   let enviadas = 0;
-  for (const [userId, tareas] of porUsuario) {
+  for (const userId of usuarios) {
+    const tareas = porUsuario.get(userId) ?? [];
     const rutinasHoy = tareas.filter((t) => esRutina(t) && t.repetir_dias.includes(diaSemana) && t.ultima_completada !== hoy);
     const normales = tareas.filter((t) => !esRutina(t));
 
@@ -169,7 +204,7 @@ Deno.serve(async (req) => {
       if (partes.length) {
         const n = deHoy.length + atrasadas.length;
         const titulo = n ? `Tienes ${n} pendiente${n === 1 ? "" : "s"} para hoy` : "Tu día de hoy";
-        enviadas += await enviar(userId, titulo, partes.join(". "), `resumen-${hoy}`);
+        enviadas += await enviar(userId, titulo, partes.join(". "), `resumen-${hoy}`, 3, ["sunny"]);
       }
     }
 
@@ -177,7 +212,7 @@ Deno.serve(async (req) => {
     for (const t of rutinasHoy) {
       if (t.hora && enEstaVentana(t.hora, minutoActual)) {
         enviadas += await enviar(userId, `Es hora de: ${t.titulo}`,
-          `Tu rutina de las ${horaBonita(t.hora)}. Márcala cuando la termines.`, `rutina-${t.id}-${hoy}`);
+          `Tu rutina de las ${horaBonita(t.hora)}. Márcala cuando la termines.`, `rutina-${t.id}-${hoy}`, 4, ["repeat"]);
       }
     }
 
@@ -185,7 +220,22 @@ Deno.serve(async (req) => {
     for (const t of normales) {
       if (t.fecha_limite === hoy && t.hora && enEstaVentana(t.hora, minutoActual)) {
         enviadas += await enviar(userId, `Es hora de: ${t.titulo}`,
-          `La programaste para las ${horaBonita(t.hora)}.`, `tarea-${t.id}-${hoy}`);
+          `La programaste para las ${horaBonita(t.hora)}.`, `tarea-${t.id}-${hoy}`, 4, ["pushpin"]);
+      }
+    }
+
+    // 4) Alarmas: avisar X minutos antes. Si una vuelta se saltó, avisa en la
+    //    siguiente (hasta 30 min tarde), y la marca para no repetirla.
+    const ahoraMs = Date.now() - 5 * 3600 * 1000; // "reloj" de Colombia en UTC
+    for (const a of (alarmas ?? []).filter((x) => x.user_id === userId)) {
+      const momento = Date.parse(`${a.fecha}T${a.hora.slice(0, 5)}:00Z`); // hora Colombia tratada como UTC
+      const aviso = momento - a.avisar_min_antes * 60000;
+      if (ahoraMs >= aviso && ahoraMs - aviso < 30 * 60000) {
+        const faltan = Math.round((momento - ahoraMs) / 60000);
+        const cuando = faltan > 1 ? `En ${faltan} minutos` : "Ahora";
+        enviadas += await enviar(userId, `⏰ ${a.titulo}`,
+          `${cuando}, a las ${horaBonita(a.hora)}.`, `alarma-${a.id}`, 5, ["alarm_clock"]);
+        await supabase.from("alarmas").update({ avisada: true }).eq("id", a.id);
       }
     }
   }

@@ -318,3 +318,68 @@ function interpretarIdea(textoOriginal, categorias) {
   resultado.texto = mayuscula(limpiar(texto));
   return resultado;
 }
+
+
+// ------------------------------------------------------------
+// ALARMAS: "añade una nueva alarma en Trabajo que diga reunión con mi jefe
+//           a las 2 de la tarde, avísame 10 minutos antes"
+// ------------------------------------------------------------
+function esAlarma(texto) {
+  const t = sinTildes(texto).slice(0, 60);
+  return /\b(alarma|alarmas|reunion|cita)\b/.test(t) && !/\b(tarea|idea)\b/.test(t.split(/alarma|reunion|cita/)[0]);
+}
+
+function interpretarAlarma(textoOriginal, categorias) {
+  const t = { original: ' ' + textoOriginal.normalize('NFC') + ' ', bajo: '' };
+  t.bajo = sinTildes(t.original);
+  const r = { titulo: '', categoriaId: null, categoriaNueva: null, fecha: hoyISO(), hora: null, avisarMin: 10 };
+
+  // 1) Cuánto antes avisar: "10 minutos antes", "media hora antes", "una hora antes"
+  const ma = t.bajo.match(/\b(?:y\s+)?(?:avisame|avisarme|recuerdame|que me avise|me avisas|con)?\s*(\d{1,3}|media|una|un|dos|cinco|diez|quince|veinte|treinta)\s*(minutos?|horas?|hora)?\s*(?:antes|de anticipacion)\b/);
+  if (ma) {
+    const palabras = { media: 30, una: 1, un: 1, dos: 2, cinco: 5, diez: 10, quince: 15, veinte: 20, treinta: 30 };
+    let n = palabras[ma[1]] ?? Number(ma[1]);
+    const unidad = ma[2] || (ma[1] === 'media' ? 'hora' : 'minutos');
+    if (ma[1] === 'media') n = 30;
+    else if (unidad.startsWith('hora')) n = n * 60;
+    r.avisarMin = n;
+    borrarTramo(t, ma.index, ma.index + ma[0].length);
+  }
+
+  // 2) Hora: "a las 2 de la tarde", "a las 8:30"
+  const mh = t.bajo.match(/\ba las (\d{1,2})(?::(\d{2})| y media)?(?:\s+(?:de la|en la|de|por la)\s+(manana|tarde|noche))?\b/);
+  if (mh) {
+    let h = Number(mh[1]);
+    const min = mh[2] || (mh[0].includes('y media') ? '30' : '00');
+    if ((mh[3] === 'tarde' || mh[3] === 'noche') && h < 12) h += 12;
+    // "a las 3" sin decir mañana/tarde: entre 1 y 6 casi siempre es de la tarde
+    if (!mh[3] && h >= 1 && h <= 6) h += 12;
+    r.hora = `${String(h).padStart(2, '0')}:${min}`;
+    borrarTramo(t, mh.index, mh.index + mh[0].length);
+  }
+
+  // 3) Día: "hoy", "mañana", "pasado mañana", "el viernes", "el 15 de noviembre"
+  const md = t.bajo.match(new RegExp(`\\b(?:para\\s+)?(?:el\\s+)?(hoy|pasado manana|manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo|\\d{1,2}\\s+de\\s+(?:${MESES_SIN_TILDE}))\\b`));
+  if (md) {
+    r.fecha = fechaDesdePalabra(md[1]) || r.fecha;
+    borrarTramo(t, md.index, md.index + md[0].length);
+  }
+
+  // 4) Quitar la orden: "oye, añade una nueva alarma"
+  const mo = t.bajo.match(/^\s*(?:oye[\s,]*)?(?:por favor[\s,]*)?(?:agrega(?:r|me)?|anade|anadir|pon(?:er|me)?|crea(?:r)?|programa(?:r|me)?|nueva)?\s*(?:una|un|esta|la)?\s*(?:nueva)?\s*alarma\b/);
+  if (mo) borrarTramo(t, mo.index, mo.index + mo[0].length);
+
+  // 5) Categoría: "en Trabajo", "categoría Trabajo"
+  for (const c of categorias) {
+    const n = sinTildes(c.nombre).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = t.bajo.match(new RegExp(`(?:\\b(?:a|en|para|de)\\s+(?:la\\s+)?)?(?:categoria\\s+)?\\b${n}\\b`));
+    if (m) { r.categoriaId = c.id; borrarTramo(t, m.index, m.index + m[0].length); break; }
+  }
+
+  // 6) Lo que queda es el título
+  let titulo = limpiar(t.original)
+    .replace(/^(?:[,.:]\s*)?(?:que diga|que dice|dice|para|de)\s*[,:]?\s*/i, '')
+    .replace(/\s+(?:y|,)\s*$/i, '');
+  r.titulo = mayuscula(limpiar(titulo));
+  return r;
+}

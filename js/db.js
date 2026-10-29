@@ -40,17 +40,19 @@ const DB = {
 
   // ---------- Cargar todo ----------
   async cargarTodo() {
-    const [categorias, tareas, subtareas, ideas] = await Promise.all([
+    const [categorias, tareas, subtareas, ideas, alarmas] = await Promise.all([
       sb.from('categorias').select('*').order('creado_en'),
       sb.from('tareas').select('*').order('fecha_limite', { ascending: true, nullsFirst: false }),
       sb.from('subtareas').select('*').order('orden'),
-      sb.from('ideas').select('*').order('creado_en', { ascending: false })
+      sb.from('ideas').select('*').order('creado_en', { ascending: false }),
+      sb.from('alarmas').select('*').gte('fecha', aISO(new Date(Date.now() - 7 * 86400000))).order('fecha').order('hora')
     ]);
     return {
       categorias: revisar(categorias),
       tareas: revisar(tareas),
       subtareas: revisar(subtareas),
-      ideas: revisar(ideas)
+      ideas: revisar(ideas),
+      alarmas: revisar(alarmas)
     };
   },
 
@@ -98,6 +100,17 @@ const DB = {
   },
   async eliminarIdea(id) {
     revisar(await sb.from('ideas').delete().eq('id', id));
+  },
+
+  // ---------- Alarmas ----------
+  async crearAlarma(datos) {
+    return revisar(await sb.from('alarmas').insert(datos).select().single());
+  },
+  async editarAlarma(id, datos) {
+    return revisar(await sb.from('alarmas').update(datos).eq('id', id).select().single());
+  },
+  async eliminarAlarma(id) {
+    revisar(await sb.from('alarmas').delete().eq('id', id));
   },
 
   // ---------- Notificaciones ----------

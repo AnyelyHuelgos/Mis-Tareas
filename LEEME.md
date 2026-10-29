@@ -29,6 +29,7 @@ mis-tareas/
     ├── 02_recordatorio_diario.sql   → Programa el aviso de las 7 a. m. (y trae la prueba)
     ├── 03_ideas_y_recordatorios.sql → Lluvia de ideas y "recuérdame cada X días"
     ├── 04_rutinas.sql               → Rutinas que se repiten ciertos días
+    ├── 05_alarmas.sql               → Alarmas con aviso X minutos antes
     └── functions/recordatorios/     → Función que envía las notificaciones
 ```
 
@@ -37,7 +38,7 @@ mis-tareas/
 ## Paso 1. Crear la base de datos (Supabase)
 
 1. Entra a supabase.com, crea una cuenta gratis y un **proyecto nuevo**.
-2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql` y `supabase/04_rutinas.sql`.
+2. Ve a **SQL Editor → New query**, pega todo el contenido de `supabase/01_tablas.sql` y dale **Run**. Luego haz lo mismo con `supabase/03_ideas_y_recordatorios.sql`, `supabase/04_rutinas.sql` y `supabase/05_alarmas.sql`.
 3. Ve a **Authentication → Users → Add user → Create new user**. Pon tu correo y una contraseña. Marca **Auto Confirm User**.
 4. Ve a **Authentication → Sign In / Providers** y desactiva **Allow new users to sign up**. Así nadie más puede crear cuenta.
 
@@ -77,6 +78,18 @@ El celular necesita HTTPS para instalarla, la voz y las notificaciones.
 Al entrar, deja marcado **Recordarme en este celular** y no tendrás que volver a poner la contraseña.
 
 ---
+
+## Paso 6A. Avisos con la app ntfy (recomendado para iPhone)
+
+Las notificaciones web en iPhone fallan seguido. ntfy es una app gratis que sí entrega bien los avisos, con sonido y en la pantalla bloqueada.
+
+1. Instala **ntfy** desde la App Store (o Play Store).
+2. Inventa un nombre de canal largo y difícil de adivinar, ej. `tareas-anyely-k8f2m9x4q`. Cualquiera que lo sepa podría mandarte avisos, así que no lo compartas.
+3. En la app ntfy toca **+**, escribe ese nombre, deja el servidor `ntfy.sh` y toca **Subscribe**. Acepta las notificaciones.
+4. En Supabase → **Edge Functions → Secrets**, agrega `NTFY_TOPIC` con ese mismo nombre.
+5. Corre la prueba del final de `02_recordatorio_diario.sql`. Te debe llegar a ntfy.
+
+Las alarmas llegan con prioridad urgente; las rutinas y tareas con hora, con prioridad alta.
 
 ## Paso 6. Notificaciones con la app cerrada
 
@@ -147,6 +160,7 @@ Frases que entiende:
 
 Palabras clave: **categoría**, **tarea**, **pasos** (separados por "uno, dos, tres" o por comas; "subtareas" también sirve, pero la voz la entiende peor), **para / fecha** (hoy, mañana, pasado mañana, un día de la semana o "15 de noviembre"), **a las** (hora).
 
+- Alarma: "Nueva alarma en Trabajo que diga reunión con mi jefe a las 2 de la tarde, avísame 10 minutos antes"
 - Rutina: "Nueva tarea, categoría Universidad, tarea practicar 30 minutos de inglés, de lunes a sábado a las 7 de la noche"
 
 Para rutinas entiende: **todos los días**, **de lunes a sábado**, **de lunes a viernes**, **entre semana**.

@@ -187,6 +187,46 @@
     </form>
   </dialog>
 
+  <!-- ============ DIÁLOGO: ALARMA ============ -->
+  <dialog id="dlgAlarma">
+    <form id="formAlarma">
+      <h2 id="dlgAlarmaTitulo">Nueva alarma</h2>
+      <p class="transcripcion" id="transcripcionAlarma" hidden></p>
+      <label>¿Qué es?
+        <input type="text" id="aTitulo" required maxlength="140" placeholder="Ej: Reunión con mi jefe">
+      </label>
+      <label>Categoría
+        <select id="aCategoria" required></select>
+      </label>
+      <div class="dos-columnas">
+        <label>Día
+          <input type="date" id="aFecha" required>
+        </label>
+        <label>Hora
+          <input type="time" id="aHora" required>
+        </label>
+      </div>
+      <label>Avisarme
+        <select id="aAvisar">
+          <option value="0">A la hora exacta</option>
+          <option value="5">5 minutos antes</option>
+          <option value="10" selected>10 minutos antes</option>
+          <option value="15">15 minutos antes</option>
+          <option value="30">30 minutos antes</option>
+          <option value="60">1 hora antes</option>
+          <option value="120">2 horas antes</option>
+          <option value="1440">1 día antes</option>
+        </select>
+      </label>
+      <div class="acciones">
+        <button type="button" class="btn suave peligro" id="btnEliminarAlarma" hidden>Eliminar</button>
+        <span class="espacio"></span>
+        <button type="button" class="btn suave" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn primario">Guardar alarma</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ============ DIÁLOGO: INSTALAR ============ -->
   <dialog id="dlgInstalar">
     <h2>Instalar en tu celular</h2>
@@ -225,13 +265,13 @@
       <button type="button" class="btn rosa" id="btnListoVoz">Listo</button>
     </div>
     <button type="button" class="enlace" id="btnEscribirEnVez">Prefiero escribirlo</button>
-    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"</p>
+    <p class="ayuda-voz">Tarea: "Nueva tarea, categoría Planecitos, tarea Lanzar web, pasos: uno, crear contenido; dos, subir la web; para el viernes"<br><br>Idea: "Nueva idea en Planecitos que diga armar 50 cuentos"<br><br>Alarma: "Nueva alarma en Trabajo, reunión con mi jefe a las 2 de la tarde, avísame 10 minutos antes"</p>
   </div>
 
   <!-- ============ DIÁLOGO: ESCRIBIR COMO SI HABLARAS ============ -->
   <dialog id="dlgEscribir">
     <form id="formEscribir">
-      <h2>Escribe tu tarea o idea</h2>
+      <h2>Escribe tu tarea, idea o alarma</h2>
       <p class="ayuda">Escríbela como la dirías en voz alta. Ej: "categoría Universidad, tarea parcial de cálculo, pasos repasar y hacer taller, para el viernes" o "idea en Planecitos que diga armar 50 cuentos"</p>
       <label>Tu tarea
         <textarea id="eTexto" rows="4" required></textarea>

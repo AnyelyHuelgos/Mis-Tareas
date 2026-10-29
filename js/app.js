@@ -9,6 +9,7 @@ const estado = {
   tareas: [],
   subtareas: [],
   ideas: [],
+  alarmas: [],
   vista: 'hoy',              // hoy | semana | calendario | categorias | categoria
   categoriaAbierta: null,    // id de la categoría que estás viendo como "blog"
   filtroCategoria: null,     // id de categoría o null = todas
@@ -214,6 +215,44 @@ function htmlTarea(t) {
 
 function htmlLista(lista) { return ordenar(lista).map(htmlTarea).join(''); }
 
+// ---------- Alarmas ----------
+function alarmasFiltradas() {
+  const cat = categoriaActual();
+  return cat ? estado.alarmas.filter((a) => a.categoria_id === cat) : estado.alarmas;
+}
+function textoAviso(min) {
+  if (!min) return 'Te aviso a la hora';
+  if (min === 1440) return 'Te aviso 1 día antes';
+  if (min >= 60) return `Te aviso ${min / 60} hora${min === 60 ? '' : 's'} antes`;
+  return `Te aviso ${min} min antes`;
+}
+function alarmaPasada(a) {
+  const ahora = new Date();
+  const [h, m] = a.hora.slice(0, 5).split(':').map(Number);
+  const f = desdeISO(a.fecha);
+  f.setHours(h, m, 0, 0);
+  return f < ahora;
+}
+function htmlAlarma(a) {
+  const cat = categoriaPorId(a.categoria_id);
+  const pasada = alarmaPasada(a);
+  return `
+    <article class="alarma ${pasada ? 'pasada' : ''}" style="--color-cat:${cat?.color || '#8A93AB'}" data-accion="editar-alarma" data-id="${a.id}">
+      <div class="alarma-hora">${horaBonita(a.hora)}</div>
+      <div class="alarma-cuerpo">
+        <div class="tarea-titulo">${esc(a.titulo)}</div>
+        <div class="tarea-meta">
+          ${cat && !categoriaActual() ? `<span class="etiqueta-cat">${esc(cat.nombre)}</span>` : ''}
+          ${a.fecha !== hoyISO() ? `<span>${etiquetaFecha(a.fecha)}</span>` : ''}
+          <span>${pasada ? 'Ya pasó' : '⏰ ' + textoAviso(a.avisar_min_antes)}</span>
+        </div>
+      </div>
+    </article>`;
+}
+function htmlAlarmas(lista) {
+  return [...lista].sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? -1 : 1)).map(htmlAlarma).join('');
+}
+
 function htmlVacio(texto, boton = true) {
   return `<div class="vacio"><p>${texto}</p>${boton ? '<button class="btn primario" data-accion="nueva-tarea">Agregar tarea</button>' : ''}</div>`;
 }
@@ -240,7 +279,11 @@ function vistaHoy() {
   const recordatorios = lista.filter((t) => !yaListadas.has(t.id) && tocaInsistir(t, hoy));
   const rutinas = lista.filter((t) => rutinaToca(t, hoy));
 
+  const alarmasHoy = alarmasFiltradas().filter((a) => a.fecha === hoy);
+
   let html = htmlProgreso([...deHoy, ...rutinas], 'hechas hoy');
+  html += `<h2 class="titulo-seccion">Alarmas de hoy <button class="btn suave chico" data-accion="nueva-alarma">+ Alarma</button></h2>`;
+  html += alarmasHoy.length ? htmlAlarmas(alarmasHoy) : '<p class="rutinas-dia">Sin alarmas para hoy.</p>';
   if (rutinas.length) html += `<h2 class="titulo-seccion">Rutinas de hoy <small>${rutinas.filter((t) => t.hecha).length} de ${rutinas.length}</small></h2>${htmlLista(rutinas)}`;
   html += `<h2 class="titulo-seccion">Para hoy <small>${deHoy.length}</small></h2>`;
   html += deHoy.length ? htmlLista(deHoy) : htmlVacio(rutinas.length ? 'Fuera de tus rutinas, no tienes nada más para hoy.' : 'No tienes nada para hoy.');
@@ -263,6 +306,7 @@ function vistaSemana() {
     const rutinasDia = lista.filter((t) => rutinaToca(t, dia));
     html += `<h2 class="titulo-seccion">${etiquetaFecha(dia)} <small>${delDia.length ? `${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : 'Libre'}</small></h2>`;
     if (rutinasDia.length) html += `<p class="rutinas-dia">Rutinas: ${rutinasDia.map((t) => esc(t.titulo)).join(', ')}</p>`;
+    html += htmlAlarmas(alarmasFiltradas().filter((a) => a.fecha === dia));
     html += htmlLista(delDia);
   }
   return html;
@@ -279,6 +323,7 @@ function vistaCalendario() {
     tareas: lista,
     colorDe
   }) + `<h2 class="titulo-seccion">${etiquetaFecha(estado.diaSeleccionado)} <small>${delDia.length} tarea${delDia.length === 1 ? '' : 's'}</small></h2>`
+    + htmlAlarmas(alarmasFiltradas().filter((a) => a.fecha === estado.diaSeleccionado))
     + (delDia.length ? htmlLista(delDia) : htmlVacio('Nada este día.'));
 }
 
@@ -357,6 +402,9 @@ function vistaCategoria() {
     </form>
     <div class="ideas">${ideas.length ? ideas.map(htmlIdea).join('') : '<p class="vacio">Aquí van tus ideas sueltas. También puedes dictarlas con el micrófono.</p>'}</div>
 
+    <h2 class="titulo-seccion">Próximas alarmas <button class="btn suave chico" data-accion="nueva-alarma" data-categoria="${c.id}">+ Alarma</button></h2>
+    ${(() => { const al = estado.alarmas.filter((a) => a.categoria_id === c.id && !alarmaPasada(a)); return al.length ? htmlAlarmas(al) : '<p class="rutinas-dia">Sin alarmas próximas.</p>'; })()}
+
     ${rutinasCat.length ? `<h2 class="titulo-seccion">Rutinas <small>${rutinasCat.length}</small></h2>${htmlLista(rutinasCat)}` : ''}
 
     <h2 class="titulo-seccion">Próximas entregas <small>${conFecha.length}</small></h2>
@@ -389,6 +437,12 @@ document.addEventListener('click', async (e) => {
     case 'volver-categorias':
       estado.vista = 'categorias';
       render();
+      break;
+    case 'nueva-alarma':
+      abrirAlarma(null, { categoria_id: el.dataset.categoria || categoriaActual() });
+      break;
+    case 'editar-alarma':
+      abrirAlarma(estado.alarmas.find((a) => a.id === id));
       break;
     case 'editar-idea':
       abrirIdea(estado.ideas.find((i) => i.id === id));
@@ -788,6 +842,14 @@ async function asegurarCategoria(idEncontrada, nombreNuevo) {
 }
 
 async function procesarVoz(texto) {
+  if (esAlarma(texto)) {
+    const r = interpretarAlarma(texto, estado.categorias);
+    abrirAlarma(null, {
+      titulo: r.titulo, categoria_id: r.categoriaId || categoriaActual(),
+      fecha: r.fecha, hora: r.hora, avisar_min_antes: r.avisarMin
+    }, texto);
+    return;
+  }
   if (esIdea(texto)) {
     const r = interpretarIdea(texto, estado.categorias);
     const categoriaId = await asegurarCategoria(r.categoriaId, r.categoriaNueva);
@@ -822,6 +884,67 @@ async function procesarVoz(texto) {
     subtareas: r.subtareas
   }, texto);
 }
+
+// ============================================================
+// DIÁLOGO DE ALARMA
+// ============================================================
+const dlgAlarma = $('#dlgAlarma');
+let alarmaEditando = null;
+
+function abrirAlarma(alarma, prellenado = {}, transcripcion = '') {
+  if (!estado.categorias.length) { toast('Primero crea una categoría.'); abrirCategoria(null); return; }
+  alarmaEditando = alarma || null;
+  const d = alarma || prellenado;
+  $('#dlgAlarmaTitulo').textContent = alarma ? 'Editar alarma' : 'Nueva alarma';
+  $('#transcripcionAlarma').hidden = !transcripcion;
+  $('#transcripcionAlarma').textContent = transcripcion ? `Escuché: "${transcripcion}"` : '';
+  $('#aCategoria').innerHTML = estado.categorias.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+  $('#aCategoria').value = d.categoria_id || estado.categorias[0].id;
+  $('#aTitulo').value = d.titulo || '';
+  $('#aFecha').value = d.fecha || hoyISO();
+  $('#aHora').value = d.hora ? d.hora.slice(0, 5) : '';
+  const opcion = String(d.avisar_min_antes ?? 10);
+  if (![...$('#aAvisar').options].some((o) => o.value === opcion)) {
+    $('#aAvisar').insertAdjacentHTML('beforeend', `<option value="${opcion}">${opcion} minutos antes</option>`);
+  }
+  $('#aAvisar').value = opcion;
+  $('#btnEliminarAlarma').hidden = !alarma;
+  dlgAlarma.showModal();
+}
+
+$('#formAlarma').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = {
+    titulo: $('#aTitulo').value.trim(),
+    categoria_id: $('#aCategoria').value,
+    fecha: $('#aFecha').value,
+    hora: $('#aHora').value,
+    avisar_min_antes: Number($('#aAvisar').value),
+    avisada: false // si la cambias, vuelve a avisar
+  };
+  if (!datos.titulo || !datos.fecha || !datos.hora) return;
+  try {
+    if (alarmaEditando) await DB.editarAlarma(alarmaEditando.id, datos);
+    else await DB.crearAlarma(datos);
+    dlgAlarma.close();
+    toast(alarmaEditando ? 'Alarma actualizada' : `Alarma lista: ${textoAviso(datos.avisar_min_antes).toLowerCase()}`);
+    await recargar();
+  } catch (err) {
+    toast('No se pudo guardar la alarma.');
+  }
+});
+
+$('#btnEliminarAlarma').addEventListener('click', async () => {
+  if (!alarmaEditando || !confirm('¿Eliminar esta alarma?')) return;
+  try {
+    await DB.eliminarAlarma(alarmaEditando.id);
+    dlgAlarma.close();
+    toast('Alarma eliminada');
+    await recargar();
+  } catch (err) {
+    toast('No se pudo eliminar.');
+  }
+});
 
 // ============================================================
 // DIÁLOGO DE IDEA
