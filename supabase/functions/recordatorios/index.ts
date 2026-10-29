@@ -40,7 +40,8 @@ const MINUTOS_VENTANA = 5; // cada cuánto corre pg_cron
 const NTFY_TOPIC = Deno.env.get("NTFY_TOPIC");
 // Token de tu cuenta gratis de ntfy.sh: así el límite diario es solo tuyo
 // y no se comparte con otros usuarios de Supabase.
-const NTFY_TOKEN = Deno.env.get("NTFY_TOKEN");
+// Se limpia por si se guardó con "Bearer", comillas o espacios
+const NTFY_TOKEN = Deno.env.get("NTFY_TOKEN")?.replace(/^\s*bearer\s+/i, "").replace(/["'\s]/g, "") || undefined;
 let ultimoNtfy = "sin intentar"; // para el diagnóstico de la prueba
 const NTFY_SERVIDOR = Deno.env.get("NTFY_SERVIDOR") ?? "https://ntfy.sh";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://tareas-anyely.netlify.app";
@@ -104,8 +105,27 @@ function lista(tareas: Tarea[], max = 3): string {
 
 // ---------- ntfy: app gratis que sí funciona bien en iPhone ----------
 // prioridad: 3 normal, 4 alta, 5 urgente (vibra más fuerte)
+// El envío lo hace la BASE DE DATOS (función enviar_ntfy del paso 07), porque
+// ntfy.sh limita por dirección de internet y las Edge Functions comparten la suya.
+// Si esa función no existe, intenta enviar directo como respaldo.
 async function enviarNtfy(titulo: string, cuerpo: string, prioridad = 3, etiquetas: string[] = []): Promise<number> {
   if (!NTFY_TOPIC) return 0;
+
+  const { data, error } = await supabase.rpc("enviar_ntfy", {
+    p_topic: NTFY_TOPIC,
+    p_token: NTFY_TOKEN ?? null,
+    p_titulo: titulo,
+    p_mensaje: cuerpo,
+    p_prioridad: prioridad,
+    p_etiquetas: etiquetas,
+    p_click: APP_URL,
+  });
+  if (!error) {
+    ultimoNtfy = `enviado desde la base de datos (solicitud ${data})`;
+    return 1;
+  }
+
+  // Respaldo: envío directo desde la función
   try {
     const r = await fetch(NTFY_SERVIDOR, {
       method: "POST",
@@ -115,7 +135,7 @@ async function enviarNtfy(titulo: string, cuerpo: string, prioridad = 3, etiquet
       },
       body: JSON.stringify({ topic: NTFY_TOPIC, title: titulo, message: cuerpo, priority: prioridad, tags: etiquetas, click: APP_URL }),
     });
-    ultimoNtfy = `${r.status} ${await r.text()}`.slice(0, 300);
+    ultimoNtfy = `directo (falló la base de datos: ${error.message}) → ${r.status} ${await r.text()}`.slice(0, 300);
     return r.ok ? 1 : 0;
   } catch (e) {
     ultimoNtfy = "error: " + String(e);
@@ -163,7 +183,9 @@ Deno.serve(async (req) => {
     }
     return Response.json({
       ok: true, prueba: true, enviadas,
-      usuarios: usuarios.length, ntfyConfigurado: Boolean(NTFY_TOPIC), ntfy: ultimoNtfy,
+      version: "9", usuarios: usuarios.length,
+      ntfyConfigurado: Boolean(NTFY_TOPIC), ntfyToken: Boolean(NTFY_TOKEN),
+      tokenEmpiezaBien: Boolean(NTFY_TOKEN?.startsWith("tk_")), ntfy: ultimoNtfy,
     });
   }
 
